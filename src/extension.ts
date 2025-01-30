@@ -10,7 +10,7 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('localseek.openChat', async () => {
             if (currentPanel) {
                 currentPanel.reveal(vscode.ViewColumn.Beside);
-                return; 
+                return;
             }
 
             // Create and configure the webview panel
@@ -20,7 +20,8 @@ export function activate(context: vscode.ExtensionContext) {
                 vscode.ViewColumn.Beside,
                 {
                     enableScripts: true,
-                    retainContextWhenHidden: true
+                    retainContextWhenHidden: true,
+                    localResourceRoots: [vscode.Uri.file(context.extensionPath)] // Add this line for CSP
                 }
             );
 
@@ -30,30 +31,56 @@ export function activate(context: vscode.ExtensionContext) {
                 const response = await ollama.list();
                 models = response.models.map((model: any) => model.name);
             } catch (error) {
+                console.error('Ollama connection error:', error);
                 vscode.window.showErrorMessage('Failed to connect to Ollama. Make sure it\'s running.');
             }
 
             // Set webview HTML content
             currentPanel.webview.html = getWebviewContent(models);
 
+            // Conversation history
+            let conversationHistory: { role: string; content: string }[] = [];
+
             // Handle messages from the webview
             currentPanel.webview.onDidReceiveMessage(async (message) => {
                 switch (message.command) {
                     case 'sendMessage':
                         try {
-                            const response = await ollama.generate({
+                            // Add user message to the conversation history
+                            conversationHistory.push({ role: 'user', content: message.text });
+
+                            const response = await ollama.chat({
                                 model: message.model,
-                                prompt: message.text,
+                                messages: conversationHistory,
                                 stream: true
                             });
 
+                            let fullResponse = ''; // Buffer for the complete AI response
+
                             for await (const part of response) {
-                                currentPanel?.webview.postMessage({
-                                    command: 'appendResponse',
-                                    text: part.response
-                                });
+                                if (part.message?.content && part.message.content.trim() !== '') {
+                                    fullResponse += part.message.content; // Append each part to the buffer
+                                    currentPanel?.webview.postMessage({
+                                        command: 'appendResponse',
+                                        text: part.message.content,
+                                        isComplete: false // Indicate this is not the final response
+                                    });
+                                }
                             }
-                        } catch (error) {
+
+                            // Skip adding empty responses to the conversation history
+                            if (fullResponse.trim() !== '') {
+                                conversationHistory.push({ role: 'assistant', content: fullResponse });
+                            }
+
+                            // Send a final message to indicate the response is complete
+                            currentPanel?.webview.postMessage({
+                                command: 'appendResponse',
+                                text: '', // Empty text to signal completion
+                                isComplete: true
+                            });
+                        } catch (streamError) {
+                            console.error('Error during streaming response:', streamError);
                             vscode.window.showErrorMessage('Error generating response');
                         }
                         break;
@@ -69,6 +96,30 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 function getWebviewContent(models: string[]): string {
+    if (models.length === 0) {
+        return /*html*/`
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>LocalSeek AI Chat</title>
+            <style>
+                body {
+                    font-family: Arial, sans-serif;
+                    padding: 10px;
+                    background-color: var(--vscode-editor-background);
+                    color: var(--vscode-editor-foreground);
+                }
+            </style>
+        </head>
+        <body>
+            <p>No models available. Please ensure Ollama is running and has models installed.</p>
+        </body>
+        </html>
+        `;
+    }
+
     return /*html*/`
     <!DOCTYPE html>
     <html lang="en">
@@ -139,22 +190,24 @@ function getWebviewContent(models: string[]): string {
             <div id="chatHistory"></div>
             
             <div class="input-container">
-                <input type="text" id="userInput" placeholder="Type your message..."/>
+                <input type="text" id="userInput" placeholder="Type your message..." />
                 <button onclick="sendMessage()">Send</button>
             </div>
         </div>
-
         <script>
             const vscode = acquireVsCodeApi();
-            let responseBuffer = '';
+            let currentAssistantMessageElement = null;
 
+            // Function to send a message
             function sendMessage() {
                 const input = document.getElementById('userInput');
                 const modelSelector = document.getElementById('modelSelector');
                 const chatHistory = document.getElementById('chatHistory');
                 
+                const userMessage = input.value.trim(); // Trim whitespace from input
+                if (!userMessage) return; // Ignore empty messages
+
                 // Add user message to history
-                const userMessage = input.value;
                 chatHistory.innerHTML += \`
                     <div class="message user">
                         <strong>You:</strong> \${userMessage}
@@ -167,7 +220,7 @@ function getWebviewContent(models: string[]): string {
                     text: userMessage,
                     model: modelSelector.value
                 });
-
+                
                 // Clear input
                 input.value = '';
             }
@@ -175,31 +228,43 @@ function getWebviewContent(models: string[]): string {
             // Handle responses from extension
             window.addEventListener('message', event => {
                 const message = event.data;
-                if (message.command === 'appendResponse') {
-                    responseBuffer += message.text;
-                    
-                    // Update last assistant message
-                    const chatHistory = document.getElementById('chatHistory');
-                    const assistantMessages = document.getElementsByClassName('assistant');
-                    if (assistantMessages.length > 0) {
-                        assistantMessages[assistantMessages.length - 1].innerHTML = \`
-                            <strong>AI:</strong> \${responseBuffer}
-                        \`;
-                    } else {
-                        chatHistory.innerHTML += \`
-                            <div class="message assistant">
-                                <strong>AI:</strong> \${responseBuffer}
-                            </div>
-                        \`;
-                    }
-                    
-                    // Auto-scroll to bottom
-                    chatHistory.scrollTop = chatHistory.scrollHeight;
 
-                    // Clear the buffer after the response is complete
-                    if (message.text === '') {
-                        responseBuffer = '';
+                if (message.command === 'appendResponse') {
+                    const chatHistory = document.getElementById('chatHistory');
+
+                    // Skip empty responses
+                    if (!message.text && !message.isComplete) return;
+
+                    if (!currentAssistantMessageElement || message.isComplete) {
+                        // Create a new assistant message element if it doesn't exist or the response is complete
+                        if (message.text.trim() !== '') {
+                            currentAssistantMessageElement = document.createElement('div');
+                            currentAssistantMessageElement.className = 'message assistant';
+                            currentAssistantMessageElement.innerHTML = \`<strong>AI:</strong> \${message.text}\`;
+                            chatHistory.appendChild(currentAssistantMessageElement);
+                        }
+                    } else {
+                        // Append text to the current assistant message
+                        currentAssistantMessageElement.innerHTML += message.text;
                     }
+
+                    // Auto-scroll to bottom
+                    setTimeout(() => {
+                        chatHistory.scrollTop = chatHistory.scrollHeight;
+                    }, 0);
+
+                    // Reset the assistant message element when the response is complete
+                    if (message.isComplete) {
+                        currentAssistantMessageElement = null;
+                    }
+                }
+            });
+
+            // Add Enter key support
+            document.getElementById('userInput').addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' || event.keyCode === 13) {
+                    event.preventDefault(); // Prevent default behavior (e.g., newline)
+                    sendMessage(); // Trigger the send message function
                 }
             });
         </script>
@@ -208,4 +273,6 @@ function getWebviewContent(models: string[]): string {
     `;
 }
 
-export function deactivate() {}
+export function deactivate() {
+    // No resources to clean up
+}
