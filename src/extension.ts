@@ -103,7 +103,7 @@ function getWebviewContent(models: string[]): string {
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>LocalSeek AI Chat</title>
+            <title>LocalSeek: "YOUR" AI Chat</title>
             <style>
                 :root {
                     --primary: rgba(99, 102, 241, 0.9);
@@ -160,7 +160,7 @@ function getWebviewContent(models: string[]): string {
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>LocalSeek AI Chat</title>
+        <title>LocalSeek: "YOUR" AI Chat</title>
         <style>
             :root {
                 --primary: rgba(99, 102, 241, 0.9);
@@ -181,6 +181,58 @@ function getWebviewContent(models: string[]): string {
                 display: flex;
                 justify-content: center;
                 align-items: center;
+            }
+
+            .header {
+                width: 100%;
+                text-align: center;
+                position: absolute;
+                top: 1rem;
+                left: 50%;
+                transform: translateX(-50%);
+            }
+
+            footer {
+                width: 100%;
+                text-align: center;
+                bottom: 0.3px;
+                left: 50%;
+                transform: translateX(-50%);
+                position: fixed;
+                color: rgba(255, 255, 255, 0.5);
+                
+                font-size: 0.875rem;
+            }
+
+            footer a {
+                color: rgb(255, 0, 0);
+                text-decoration: none;
+            }
+
+            .chat-container {
+                margin-top: 6rem; /* Push chatbox down */
+            }
+
+            .title {
+                font-size: 2.5rem;
+                font-weight: bold;
+                text-align: center;
+                text-transform: uppercase;
+                letter-spacing: 2px;
+                margin-bottom: 0.5rem;
+                background: linear-gradient(270deg, #6366f1, #10b981, #6366f1);
+                background-size: 200% 200%;
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+                animation: gradientMove 5s ease infinite;
+            }
+
+            .tagline {
+                font-size: 1.2rem;
+                font-weight: 400;
+                color: rgba(255, 255, 255, 0.8);
+                text-align: center;
+                margin-bottom: 1.5rem;
             }
 
             .chat-container {
@@ -316,6 +368,10 @@ function getWebviewContent(models: string[]): string {
         </style>
     </head>
     <body>
+        <div class="header">
+            <div class="title">LocalSeek</div>
+            <div class="tagline">Your personal AI-powered chat assistant</div>
+        </div>
         <div class="chat-container">
             <select id="modelSelector">
                 ${models.map(model => `<option value="${model}">${model}</option>`).join('')}
@@ -333,6 +389,11 @@ function getWebviewContent(models: string[]): string {
                 </button>
             </div>
         </div>
+        <footer>
+            <p style="text-align: center; margin-top: 2rem; color: rgba(255, 255, 255, 0.5); font-size: 0.875rem;">
+                Made with ❤️ by <a href="https://www.linkedin.com/in/hariharen9/" target="_blank" style="color: rgba(255, 255, 255, 0.5);">Hariharen</a>
+            </p>
+        </footer>
         <script>
             // Existing JavaScript remains the same, with updated class names
             const vscode = acquireVsCodeApi();
