@@ -105,19 +105,53 @@ function getWebviewContent(models: string[]): string {
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>LocalSeek AI Chat</title>
             <style>
+                :root {
+                    --primary: rgba(99, 102, 241, 0.9);
+                    --surface: rgba(17, 24, 39, 0.95);
+                    --border: rgba(255, 255, 255, 0.1);
+                }
+                
                 body {
-                    font-family: Arial, sans-serif;
-                    padding: 10px;
-                    background-color: var(--vscode-editor-background);
-                    color: var(--vscode-editor-foreground);
+                    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+                    margin: 0;
+                    padding: 2rem;
+                    background: 
+                        radial-gradient(circle at 100% 0%, rgba(99, 102, 241, 0.1) 0%, transparent 60%),
+                        radial-gradient(circle at 0% 100%, rgba(16, 185, 129, 0.1) 0%, transparent 60%),
+                        #0f172a;
+                    height: 100vh;
+                    color: rgba(255, 255, 255, 0.9);
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                }
+
+                .error-card {
+                    background: var(--surface);
+                    padding: 2rem;
+                    border-radius: 1.5rem;
+                    border: 1px solid var(--border);
+                    backdrop-filter: blur(20px);
+                    box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.25);
+                    max-width: 400px;
+                    text-align: center;
+                }
+
+                .error-icon {
+                    font-size: 3rem;
+                    margin-bottom: 1rem;
+                    opacity: 0.8;
                 }
             </style>
         </head>
         <body>
-            <p>No models available. Please ensure Ollama is running and has models installed.</p>
+            <div class="error-card">
+                <div class="error-icon">⚠️</div>
+                <h2>Model Connection Error</h2>
+                <p>Please ensure Ollama is running and has models installed.</p>
+            </div>
         </body>
-        </html>
-        `;
+        </html>`;
     }
 
     return /*html*/`
@@ -128,56 +162,156 @@ function getWebviewContent(models: string[]): string {
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>LocalSeek AI Chat</title>
         <style>
-            body {
-                font-family: Arial, sans-serif;
-                padding: 10px;
-                background-color: var(--vscode-editor-background);
-                color: var(--vscode-editor-foreground);
+            :root {
+                --primary: rgba(99, 102, 241, 0.9);
+                --surface: rgba(17, 24, 39, 0.95);
+                --border: rgba(255, 255, 255, 0.1);
             }
+
+            body {
+                font-family: 'Inter', system-ui, -apple-system, sans-serif;
+                margin: 0;
+                padding: 2rem;
+                background: 
+                    radial-gradient(circle at 100% 0%, rgba(99, 102, 241, 0.1) 0%, transparent 60%),
+                    radial-gradient(circle at 0% 100%, rgba(16, 185, 129, 0.1) 0%, transparent 60%),
+                    #0f172a;
+                height: 100vh;
+                color: rgba(255, 255, 255, 0.9);
+                display: flex;
+                justify-content: center;
+                align-items: center;
+            }
+
             .chat-container {
+                width: 100%;
+                max-width: 800px;
+                height: 90vh;
+                background: var(--surface);
+                border-radius: 1.5rem;
+                border: 1px solid var(--border);
+                backdrop-filter: blur(20px);
+                box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.25);
                 display: flex;
                 flex-direction: column;
-                height: 95vh;
+                overflow: hidden;
             }
+
             #modelSelector {
-                margin-bottom: 10px;
-                padding: 5px;
-                background-color: var(--vscode-dropdown-background);
-                color: var(--vscode-dropdown-foreground);
+                margin: 1rem;
+                padding: 0.75rem 1rem;
+                background: rgba(255, 255, 255, 0.05);
+                border: 1px solid var(--border);
+                border-radius: 0.75rem;
+                color: white;
+                font-size: 0.875rem;
+                appearance: none;
+                background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white'%3e%3cpath d='M7 10l5 5 5-5z'/%3e%3c/svg%3e");
+                background-repeat: no-repeat;
+                background-position: right 0.75rem center;
+                background-size: 1.25rem;
             }
+
             #chatHistory {
                 flex: 1;
+                padding: 1.5rem;
                 overflow-y: auto;
-                border: 1px solid var(--vscode-editorWidget-border);
-                padding: 10px;
-                margin-bottom: 10px;
-            }
-            .input-container {
+                background: rgba(0, 0, 0, 0.2);
                 display: flex;
-                gap: 10px;
+                flex-direction: column;
+                gap: 1.5rem;
             }
+
+            .message {
+                max-width: 80%;
+                padding: 1rem 1.25rem;
+                border-radius: 1rem;
+                position: relative;
+                animation: messageEnter 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+                line-height: 1.5;
+                font-size: 0.9375rem;
+            }
+
+            .user {
+                background: var(--primary);
+                align-self: flex-end;
+                border-bottom-right-radius: 0.25rem;
+            }
+
+            .assistant {
+                background: rgba(31, 41, 55, 0.7);
+                align-self: flex-start;
+                border-bottom-left-radius: 0.25rem;
+            }
+
+            .input-container {
+                padding: 1.5rem;
+                background: rgba(0, 0, 0, 0.3);
+                border-top: 1px solid var(--border);
+                display: flex;
+                gap: 1rem;
+            }
+
             #userInput {
                 flex: 1;
-                padding: 5px;
-                background-color: var(--vscode-input-background);
-                color: var(--vscode-input-foreground);
-                border: 1px solid var(--vscode-input-border);
+                padding: 0.875rem 1.25rem;
+                background: rgba(255, 255, 255, 0.05);
+                border: 1px solid var(--border);
+                border-radius: 0.75rem;
+                color: white;
+                font-size: 0.9375rem;
+                transition: all 0.2s ease;
             }
+
+            #userInput:focus {
+                outline: none;
+                border-color: var(--primary);
+                box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+            }
+
             button {
-                padding: 5px 15px;
-                background-color: var(--vscode-button-background);
-                color: var(--vscode-button-foreground);
+                padding: 0.875rem 1.5rem;
+                background: var(--primary);
                 border: none;
+                border-radius: 0.75rem;
+                color: white;
+                font-weight: 500;
                 cursor: pointer;
+                transition: all 0.2s ease;
+                display: flex;
+                align-items: center;
+                gap: 0.5rem;
             }
-            .message {
-                margin-bottom: 10px;
+
+            button:hover {
+                opacity: 0.9;
+                transform: translateY(-1px);
             }
-            .user {
-                color: var(--vscode-editor-foreground);
+
+            @keyframes messageEnter {
+                from {
+                    opacity: 0;
+                    transform: translateY(10px);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateY(0);
+                }
             }
-            .assistant {
-                color: var(--vscode-terminal-ansiGreen);
+
+            /* Scrollbar Styling */
+            ::-webkit-scrollbar {
+                width: 8px;
+            }
+
+            ::-webkit-scrollbar-track {
+                background: rgba(255, 255, 255, 0.05);
+                border-radius: 4px;
+            }
+
+            ::-webkit-scrollbar-thumb {
+                background: rgba(255, 255, 255, 0.2);
+                border-radius: 4px;
             }
         </style>
     </head>
@@ -190,81 +324,72 @@ function getWebviewContent(models: string[]): string {
             <div id="chatHistory"></div>
             
             <div class="input-container">
-                <input type="text" id="userInput" placeholder="Type your message..." />
-                <button onclick="sendMessage()">Send</button>
+                <input type="text" id="userInput" placeholder="Ask me anything..." />
+                <button onclick="sendMessage()">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+                    </svg>
+                    Send
+                </button>
             </div>
         </div>
         <script>
+            // Existing JavaScript remains the same, with updated class names
             const vscode = acquireVsCodeApi();
             let currentAssistantMessageElement = null;
 
-            // Function to send a message
             function sendMessage() {
                 const input = document.getElementById('userInput');
                 const modelSelector = document.getElementById('modelSelector');
                 const chatHistory = document.getElementById('chatHistory');
                 
-                const userMessage = input.value.trim(); // Trim whitespace from input
-                if (!userMessage) return; // Ignore empty messages
+                const userMessage = input.value.trim();
+                if (!userMessage) return;
 
-                // Add user message to history
                 chatHistory.innerHTML += \`
                     <div class="message user">
-                        <strong>You:</strong> \${userMessage}
+                        \${userMessage}
                     </div>
                 \`;
                 
-                // Send message to extension
                 vscode.postMessage({
                     command: 'sendMessage',
                     text: userMessage,
                     model: modelSelector.value
                 });
                 
-                // Clear input
                 input.value = '';
+                chatHistory.scrollTop = chatHistory.scrollHeight;
             }
 
-            // Handle responses from extension
             window.addEventListener('message', event => {
                 const message = event.data;
+                const chatHistory = document.getElementById('chatHistory');
 
                 if (message.command === 'appendResponse') {
-                    const chatHistory = document.getElementById('chatHistory');
-
-                    // Skip empty responses
-                    if (!message.text && !message.isComplete) return;
-
                     if (!currentAssistantMessageElement || message.isComplete) {
-                        // Create a new assistant message element if it doesn't exist or the response is complete
                         if (message.text.trim() !== '') {
                             currentAssistantMessageElement = document.createElement('div');
                             currentAssistantMessageElement.className = 'message assistant';
-                            currentAssistantMessageElement.innerHTML = \`<strong>AI:</strong> \${message.text}\`;
+                            currentAssistantMessageElement.textContent = message.text;
                             chatHistory.appendChild(currentAssistantMessageElement);
                         }
                     } else {
-                        // Append text to the current assistant message
-                        currentAssistantMessageElement.innerHTML += message.text;
+                        currentAssistantMessageElement.textContent += message.text;
                     }
 
-                    // Auto-scroll to bottom
-                    setTimeout(() => {
-                        chatHistory.scrollTop = chatHistory.scrollHeight;
-                    }, 0);
+                    chatHistory.scrollTop = chatHistory.scrollHeight;
 
-                    // Reset the assistant message element when the response is complete
                     if (message.isComplete) {
                         currentAssistantMessageElement = null;
                     }
                 }
             });
 
-            // Add Enter key support
             document.getElementById('userInput').addEventListener('keydown', (event) => {
-                if (event.key === 'Enter' || event.keyCode === 13) {
-                    event.preventDefault(); // Prevent default behavior (e.g., newline)
-                    sendMessage(); // Trigger the send message function
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    sendMessage();
                 }
             });
         </script>
@@ -272,6 +397,7 @@ function getWebviewContent(models: string[]): string {
     </html>
     `;
 }
+
 
 export function deactivate() {
     // No resources to clean up
