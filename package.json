@@ -78,11 +78,6 @@
       "media/**"
     ]
   },
-  "files": [
-    "out",
-    "media",
-    "package.json"
-  ],
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",

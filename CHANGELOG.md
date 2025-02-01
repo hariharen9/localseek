@@ -1,7 +1,7 @@
 # Change Log
 
 
-## [0.0.1] - 2025-01-31
+## [0.1] - 2025-02-01
 ### Added
 - Initial release of LocalSeek
 - Basic Ollama integration
