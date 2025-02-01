@@ -1,71 +1,113 @@
-# localseek README
+# LocalSeek 🤖💬
 
-This is the README for your extension "localseek". After writing up a brief description, we recommend including the following sections.
+LocalSeek is a powerful, privacy-first AI chat extension for Visual Studio Code that brings conversational AI directly to your development environment - completely locally.
 
-## Features
+![LocalSeek Logo](media/icon.png)
 
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
+## 🌟 Key Features
 
-For example if there is an image subfolder under your extension project workspace:
+### 💻 Fully Local AI Interaction
+- **Zero Cloud Dependencies**: All AI processing happens 100% on your machine
+- **Privacy-First Approach**: No external API calls or data transmission
+- **Offline-Ready**: Works without internet connection
+- **Local Model Management**: Seamlessly use any Ollama-compatible model
 
-\!\[feature X\]\(images/feature-x.png\)
+### 🚀 Seamless VSCode Integration
+- Integrated sidebar AI chat view
+- Standalone chat panel
+- Instant model switching
+- Lightweight and non-intrusive design
 
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
+### 🔒 Local Processing Advantages
+- Enhanced Privacy: Your conversations never leave your computer
+- Reduced Latency: Direct local model access
+- Cost-Effective: No subscription or per-token charges
+- Customizable: Use any locally hosted AI model
 
-## Requirements
+## 📋 Prerequisites
 
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
+### System Requirements
+- Visual Studio Code (v1.96.0+)
+- [Ollama](https://ollama.com/) installed locally
+- Minimum 8GB RAM recommended
+- At least one Ollama-compatible LLM model (DeepSeek R1 is preffered 😉)
 
-## Extension Settings
+### Recommended Model Installations
+```bash
+# Pull recommended models
+ollama pull deepseek-r1:14b # The best in my opinion
+ollama pull mistral         # Balanced performance
+ollama pull llama3          # Versatile model
+ollama pull phi3            # Lightweight option
+```
 
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
+## 🔧 Installation
 
-For example:
+### Method 1: Visual Studio Code Marketplace
+1. Open VSCode Extensions (Ctrl+Shift+X)
+2. Search for "LocalSeek"
+3. Click "Install"
 
-This extension contributes the following settings:
+### Method 2: Manual VSIX Installation
+1. Download VSIX from [Releases](coming soon)
+2. Open VSCode Extensions view
+3. Click "..." menu
+4. Select "Install from VSIX"
+5. Choose downloaded file
 
-* `myExtension.enable`: Enable/disable this extension.
-* `myExtension.thing`: Set to `blah` to do something.
+## 🚀 Quick Start Guide
 
-## Known Issues
+### Accessing LocalSeek
+- **Sidebar Chat**: Click LocalSeek icon in Activity Bar
+- **Standalone Chat**: 
+  - Command Palette (Ctrl+Shift+P)
+  - Type "LocalSeek AI Chat"
 
-Calling out known issues can help limit users opening duplicate issues against your extension.
+### Basic Usage
+1. Select Ollama model from dropdown
+2. Type your message
+3. Press Enter or Send button
+4. Receive instant, local AI responses
 
-## Release Notes
+## ⚙️ Configuration
 
-Users appreciate release notes as you update your extension.
+### Ollama Host Configuration
+Customize Ollama connection in VSCode Settings:
+- Open Settings (Ctrl+,)
+- Search "LocalSeek"
+- Modify "Ollama Host" if needed
 
-### 1.0.0
+### Supported Configuration Options
+- Custom Ollama host address
+- Default model selection
+- Response streaming preferences
 
-Initial release of ...
+## 🔬 Supported Models
+LocalSeek works with any Ollama-compatible model (Preferrably DeepSeek 😉), including:
+- Mistral
+- Llama 3
+- Phi-3
+- CodeLlama
+- Mixtral
+- And many more!
 
-### 1.0.1
+## 🛡️ Privacy Commitment
+- 100% Local Processing
+- No External Data Transmission
+- Full Control Over Your AI Interactions
 
-Fixed issue #.
+## 🤝 Contributing
+Contributions welcome! 
+- Report issues on GitHub
+- Submit pull requests
+- Suggest new features
 
-### 1.1.0
+## 📦 Troubleshooting
+- Ensure Ollama is running
+- Verify model installations
+- Check VSCode and extension compatibility
 
-Added features X, Y, and Z.
+## 📝 License
+MIT License
 
----
-
-## Following extension guidelines
-
-Ensure that you've read through the extensions guidelines and follow the best practices for creating your extension.
-
-* [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
-
-## Working with Markdown
-
-You can author your README using Visual Studio Code. Here are some useful editor keyboard shortcuts:
-
-* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux).
-* Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux).
-* Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets.
-
-## For more information
-
-* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
-
-**Enjoy!**
+**Developed with ❤️ by Hariharen**

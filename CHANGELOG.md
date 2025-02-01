@@ -1,9 +1,21 @@
 # Change Log
 
-All notable changes to the "localseek" extension will be documented in this file.
 
-Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
+## [0.0.1] - 2025-01-31
+### Added
+- Initial release of LocalSeek
+- Basic Ollama integration
+- Chat interface in VSCode
+- Model selection support
+- Streaming response capabilities
 
-## [Unreleased]
+### Known Limitations
+- Limited error handling
+- Basic conversation management
+- Single conversation context
 
-- Initial release
+## [Upcoming Features]
+- Multiple conversation threads
+- Advanced model configuration
+- Local model management
+- Code snippet integration

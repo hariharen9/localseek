@@ -2,10 +2,14 @@ import * as vscode from 'vscode';
 import { Ollama } from 'ollama';
 
 export function activate(context: vscode.ExtensionContext) {
-    const ollama = new Ollama({ host: 'http://localhost:11434' });
+    const config = vscode.workspace.getConfiguration('localseek');
+    const ollama = new Ollama({ 
+        host: config.get('ollamaHost') || 'http://localhost:11434' 
+    });
+    
     let currentPanel: vscode.WebviewPanel | undefined;
 
-    // Register the command to open the chat interface
+    // Register command to open chat panel
     context.subscriptions.push(
         vscode.commands.registerCommand('localseek.openChat', async () => {
             if (currentPanel) {
@@ -13,145 +17,250 @@ export function activate(context: vscode.ExtensionContext) {
                 return;
             }
 
-            // Create and configure the webview panel
-            currentPanel = vscode.window.createWebviewPanel(
-                'localseekChat',
-                'LocalSeek AI Chat',
-                vscode.ViewColumn.Beside,
-                {
-                    enableScripts: true,
-                    retainContextWhenHidden: true,
-                    localResourceRoots: [vscode.Uri.file(context.extensionPath)] // Add this line for CSP
-                }
-            );
-
-            // Get initial list of models
-            let models: string[] = [];
-            try {
-                const response = await ollama.list();
-                models = response.models.map((model: any) => model.name);
-            } catch (error) {
-                console.error('Ollama connection error:', error);
-                vscode.window.showErrorMessage('Failed to connect to Ollama. Make sure it\'s running.');
-            }
-
-            // Set webview HTML content
-            currentPanel.webview.html = getWebviewContent(models);
-
-            // Conversation history
-            let conversationHistory: { role: string; content: string }[] = [];
-
-            // Handle messages from the webview
-            currentPanel.webview.onDidReceiveMessage(async (message) => {
-                switch (message.command) {
-                    case 'sendMessage':
-                        try {
-                            // Add user message to the conversation history
-                            conversationHistory.push({ role: 'user', content: message.text });
-
-                            const response = await ollama.chat({
-                                model: message.model,
-                                messages: conversationHistory,
-                                stream: true
-                            });
-
-                            let fullResponse = ''; // Buffer for the complete AI response
-
-                            for await (const part of response) {
-                                if (part.message?.content && part.message.content.trim() !== '') {
-                                    fullResponse += part.message.content; // Append each part to the buffer
-                                    currentPanel?.webview.postMessage({
-                                        command: 'appendResponse',
-                                        text: part.message.content,
-                                        isComplete: false // Indicate this is not the final response
-                                    });
-                                }
-                            }
-
-                            // Skip adding empty responses to the conversation history
-                            if (fullResponse.trim() !== '') {
-                                conversationHistory.push({ role: 'assistant', content: fullResponse });
-                            }
-
-                            // Send a final message to indicate the response is complete
-                            currentPanel?.webview.postMessage({
-                                command: 'appendResponse',
-                                text: '', // Empty text to signal completion
-                                isComplete: true
-                            });
-                        } catch (streamError) {
-                            console.error('Error during streaming response:', streamError);
-                            vscode.window.showErrorMessage('Error generating response');
-                        }
-                        break;
-                }
-            });
-
-            // Clean up when panel is closed
-            currentPanel.onDidDispose(() => {
+            currentPanel = createWebviewPanel(context);
+            setupWebview(currentPanel, context, ollama, () => {
                 currentPanel = undefined;
-            }, null, context.subscriptions);
+            });
         })
+    );
+
+    // Register sidebar webview view
+    context.subscriptions.push(
+        vscode.window.registerWebviewViewProvider(
+            'localseek-chat',
+            new ChatWebviewViewProvider(context, ollama)
+        )
     );
 }
 
-function getWebviewContent(models: string[]): string {
+function createWebviewPanel(context: vscode.ExtensionContext): vscode.WebviewPanel {
+    // Properly declare and initialize the panel
+    const panel = vscode.window.createWebviewPanel(
+        'localseekChat',
+        'LocalSeek AI Chat',
+        vscode.ViewColumn.Beside,
+        {
+            enableScripts: true,
+            retainContextWhenHidden: true,
+            localResourceRoots: [context.extensionUri]
+        }
+    );
+
+    // Add icon to title bar
+    panel.iconPath = {
+        light: vscode.Uri.joinPath(context.extensionUri, 'media', 'sidebar.svg'),
+        dark: vscode.Uri.joinPath(context.extensionUri, 'media', 'sidebar.svg')
+    };
+
+    return panel;  // Return the properly declared panel
+}
+
+async function setupWebview(
+    panel: vscode.WebviewPanel,
+    context: vscode.ExtensionContext,
+    ollama: Ollama,
+    onDispose: () => void
+) {
+    let models: string[] = [];
+    try {
+        const response = await ollama.list();
+        models = response.models.map((model: any) => model.name);
+    } catch (error) {
+        vscode.window.showErrorMessage('Failed to connect to Ollama. Make sure it\'s running.');
+    }
+
+    panel.webview.html = getWebviewContent(models,context);
+    let conversationHistory: { role: string; content: string }[] = [];
+
+    panel.webview.onDidReceiveMessage(async (message) => {
+        handleMessage(message, panel, conversationHistory, ollama);
+    });
+
+    panel.onDidDispose(() => {
+        onDispose();
+    });
+}
+
+class ChatWebviewViewProvider implements vscode.WebviewViewProvider {
+    constructor(
+        private readonly context: vscode.ExtensionContext,
+        private readonly ollama: Ollama
+    ) {}
+
+    resolveWebviewView(webviewView: vscode.WebviewView) {
+        webviewView.webview.options = {
+            enableScripts: true,
+            localResourceRoots: [this.context.extensionUri]
+        };
+
+        let models: string[] = [];
+        this.ollama.list().then(response => {
+            models = response.models.map((model: any) => model.name);
+            webviewView.webview.html = getWebviewContent(models, this.context);
+        }).catch(error => {
+            webviewView.webview.html = getWebviewContent([], this.context);
+        });
+
+        let conversationHistory: { role: string; content: string }[] = [];
+
+        webviewView.webview.onDidReceiveMessage(async (message) => {
+            handleMessage(message, webviewView, conversationHistory, this.ollama);
+        });
+    }
+}
+
+async function handleMessage(
+    message: any,
+    webview: vscode.WebviewPanel | vscode.WebviewView,
+    conversationHistory: { role: string; content: string }[],
+    ollama: Ollama
+) {
+    switch (message.command) {
+        case 'sendMessage':
+            try {
+                conversationHistory.push({ role: 'user', content: message.text });
+                
+                const response = await ollama.chat({
+                    model: message.model,
+                    messages: conversationHistory,
+                    stream: true
+                });
+
+                let fullResponse = '';
+                for await (const part of response) {
+                    if (part.message?.content?.trim()) {
+                        fullResponse += part.message.content;
+                        webview.webview.postMessage({
+                            command: 'appendResponse',
+                            text: part.message.content,
+                            isComplete: false
+                        });
+                    }
+                }
+
+                if (fullResponse.trim()) {
+                    conversationHistory.push({ role: 'assistant', content: fullResponse });
+                }
+
+                webview.webview.postMessage({
+                    command: 'appendResponse',
+                    text: '',
+                    isComplete: true
+                });
+            } catch (error) {
+                vscode.window.showErrorMessage('Error generating response');
+            }
+            break;
+    }
+}
+
+
+// Keep your existing getWebviewContent function unchanged
+function getWebviewContent(models: string[],  context: vscode.ExtensionContext): string {
+
+
     if (models.length === 0) {
         return /*html*/`
         <!DOCTYPE html>
-        <html lang="en">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>LocalSeek: "YOUR" AI Chat</title>
-            <style>
-                :root {
-                    --primary: rgba(99, 102, 241, 0.9);
-                    --surface: rgba(17, 24, 39, 0.95);
-                    --border: rgba(255, 255, 255, 0.1);
-                }
-                
-                body {
-                    font-family: 'Inter', system-ui, -apple-system, sans-serif;
-                    margin: 0;
-                    padding: 2rem;
-                    background: 
-                        radial-gradient(circle at 100% 0%, rgba(99, 102, 241, 0.1) 0%, transparent 60%),
-                        radial-gradient(circle at 0% 100%, rgba(16, 185, 129, 0.1) 0%, transparent 60%),
-                        #0f172a;
-                    height: 100vh;
-                    color: rgba(255, 255, 255, 0.9);
-                    display: flex;
-                    justify-content: center;
-                    align-items: center;
-                }
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LocalSeek: "YOUR" AI Chat</title>
+    
+    <style>
+        :root {
+            --primary: rgba(99, 102, 241, 0.9);
+            --surface: rgba(17, 24, 39, 0.95);
+            --border: rgba(255, 255, 255, 0.1);
+        }
+        
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            margin: 0;
+            padding: 2rem;
+            background: 
+                radial-gradient(circle at 100% 0%, rgba(99, 102, 241, 0.1) 0%, transparent 60%),
+                radial-gradient(circle at 0% 100%, rgba(16, 185, 129, 0.1) 0%, transparent 60%),
+                #0f172a;
+            height: 100vh;
+            color: rgba(255, 255, 255, 0.9);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
 
-                .error-card {
-                    background: var(--surface);
-                    padding: 2rem;
-                    border-radius: 1.5rem;
-                    border: 1px solid var(--border);
-                    backdrop-filter: blur(20px);
-                    box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.25);
-                    max-width: 400px;
-                    text-align: center;
-                }
+        .title {
+            font-size: 2.5rem;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(270deg, #6366f1, #10b981, #6366f1);
+            background-size: 200% 200%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: gradientMove 5s ease infinite;
+        }
 
-                .error-icon {
-                    font-size: 3rem;
-                    margin-bottom: 1rem;
-                    opacity: 0.8;
-                }
-            </style>
-        </head>
-        <body>
-            <div class="error-card">
-                <div class="error-icon">⚠️</div>
-                <h2>Model Connection Error</h2>
-                <p>Please ensure Ollama is running and has models installed.</p>
-            </div>
-        </body>
-        </html>`;
+        .tagline {
+            font-size: 1.2rem;
+            font-weight: 400;
+            color: rgba(255, 255, 255, 0.8);
+            margin-bottom: 1.5rem;
+        }
+
+        .error-card {
+            background: var(--surface);
+            padding: 2rem;
+            border-radius: 1.5rem;
+            border: 1px solid var(--border);
+            backdrop-filter: blur(20px);
+            box-shadow: 0 24px 48px -12px rgba(0, 0, 0, 0.25);
+            max-width: 400px;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .error-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            opacity: 0.8;
+        }
+
+        footer {
+            width: 100%;
+            text-align: center;
+            position: fixed;
+            bottom: 0.3px;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 0.875rem;
+        }
+
+        footer a {
+            color: rgb(255, 0, 0);
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="title">LocalSeek</div>
+    <div class="tagline">Seek your answers <i>LOCALLY</i> within VSCode 🥳</div>
+    
+    <div class="error-card">
+        <div class="error-icon">⚠️</div>
+        <h2>Model Connection Error</h2>
+        <p>Please ensure Ollama is running in the background and has models installed.</p>
+    </div>
+    
+    <footer>
+        <p>Made with ❤️ by <a href="https://www.linkedin.com/in/hariharen9/" target="_blank">Hariharen</a></p>
+    </footer>
+</body>
+</html>`;
     }
 
     return /*html*/`
@@ -182,6 +291,60 @@ function getWebviewContent(models: string[]): string {
                 justify-content: center;
                 align-items: center;
             }
+            /* Add these to your existing styles */
+.thinking {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 0.75rem;
+    margin-bottom: 1rem;
+    overflow: hidden;
+}
+
+.thinking summary {
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+    background: rgba(99, 102, 241, 0.1);
+    list-style: none;
+    font-weight: 500;
+}
+
+.thinking-content {
+    padding: 1rem;
+}
+
+.response-content {
+    margin-top: 1rem;
+}
+
+.copy-button {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+    background: var(--primary);
+    border: none;
+    border-radius: 0.375rem;
+    color: white;
+    opacity: 0.8;
+    transition: opacity 0.2s;
+}
+
+.copy-button:hover {
+    opacity: 1;
+}
+
+pre {
+    margin: 1rem 0;
+    padding: 1.5rem;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 0.75rem;
+    overflow-x: auto;
+}
+
+code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.875rem;
+}
 
             .header {
                 width: 100%;
@@ -250,12 +413,15 @@ function getWebviewContent(models: string[]): string {
             }
 
             #modelSelector {
+                font-family: "Inter", "Arial", sans-serif;
                 margin: 1rem;
                 padding: 0.75rem 1rem;
                 background: rgba(255, 255, 255, 0.05);
                 border: 1px solid var(--border);
-                border-radius: 0.75rem;
+                border-radius: 1rem;
                 color: white;
+                font-style: italic;
+                text-transform: uppercase;
                 font-size: 0.875rem;
                 appearance: none;
                 background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white'%3e%3cpath d='M7 10l5 5 5-5z'/%3e%3c/svg%3e");
@@ -370,7 +536,7 @@ function getWebviewContent(models: string[]): string {
     <body>
         <div class="header">
             <div class="title">LocalSeek</div>
-            <div class="tagline">Your personal AI-powered chat assistant</div>
+            <div class="tagline">Seek your answers <i>LOCALLY</i> within VSCode 🥳</div>
         </div>
         <div class="chat-container">
             <select id="modelSelector">
@@ -382,9 +548,9 @@ function getWebviewContent(models: string[]): string {
             <div class="input-container">
                 <input type="text" id="userInput" placeholder="Ask me anything..." />
                 <button onclick="sendMessage()">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
-                    </svg>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+            </svg>
                     Send
                 </button>
             </div>
@@ -453,6 +619,7 @@ function getWebviewContent(models: string[]): string {
                     sendMessage();
                 }
             });
+            
         </script>
     </body>
     </html>

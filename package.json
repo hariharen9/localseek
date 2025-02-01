@@ -3,29 +3,95 @@
   "displayName": "LocalSeek",
   "description": "Chat with your LLMs completely locally",
   "version": "0.0.1",
+  "publisher": "Hariharen",
+  "private": false,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hariharen9/localseek"
+  },
   "engines": {
     "vscode": "^1.96.0"
   },
   "categories": [
-    "Other"
+    "Other",
+    "Machine Learning",
+    "Education"
   ],
+  "keywords": [
+    "ai",
+    "chat",
+    "llm",
+    "ollama",
+    "local"
+  ],
+  "icon": "media/LOCALSEEK-logo.png",
+  "galleryBanner": {
+    "color": "#0f172a",
+    "theme": "dark"
+  },
+  "activationEvents": [],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
         "command": "localseek.openChat",
         "title": "Open LocalSeek AI Chat",
-        "category": "LocalSeek"
+        "category": "LocalSeek",
+        "icon": {
+          "light": "media/sidebar.svg",
+          "dark": "media/sidebar.svg"
+        }
       }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "localseek-sidebar",
+          "title": "LocalSeek",
+          "icon": "media/sidebar.svg"
+        }
+      ]
+    },
+    "views": {
+      "localseek-sidebar": [
+        {
+          "type": "webview",
+          "id": "localseek-chat",
+          "name": "AI Chat",
+          "icon": "media/sidebar.svg",
+          "contextualTitle": "LocalSeek Chat"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "LocalSeek",
+      "properties": {
+        "localseek.ollamaHost": {
+          "type": "string",
+          "default": "http://localhost:11434",
+          "description": "Ollama API host address"
+        }
+      }
+    },
+    "resources": [
+      "media/**"
     ]
   },
+  "files": [
+    "out",
+    "media",
+    "package.json"
+  ],
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src",
-    "test": "vscode-test"
+    "test": "vscode-test",
+    "package": "vsce package",
+    "publish": "vsce publish"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
@@ -35,6 +101,7 @@
     "@typescript-eslint/parser": "^8.17.0",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",
+    "@vscode/vsce": "^2.24.0",
     "eslint": "^9.16.0",
     "typescript": "^5.7.2"
   },
