@@ -134,15 +134,32 @@ async function handleMessage(
         });
 
         let fullResponse = "";
+        let buffer = "";
         for await (const part of response) {
           if (part.message?.content?.trim()) {
-            fullResponse += part.message.content;
-            webview.webview.postMessage({
-              command: "appendResponse",
-              text: part.message.content,
-              isComplete: false,
-            });
+            const chunk = part.message.content;
+            fullResponse += chunk;
+            buffer += chunk;
+
+            // Send chunks more frequently for better streaming feel
+            if (buffer.length > 50 || chunk.includes('\n')) {
+              webview.webview.postMessage({
+                command: "appendResponseChunk",
+                text: buffer,
+                isComplete: false,
+              });
+              buffer = "";
+            }
           }
+        }
+
+        // Send any remaining buffer
+        if (buffer.length > 0) {
+          webview.webview.postMessage({
+            command: "appendResponseChunk",
+            text: buffer,
+            isComplete: false,
+          });
         }
 
         if (fullResponse.trim()) {
@@ -152,8 +169,9 @@ async function handleMessage(
           });
         }
 
+        // Finalize the message
         webview.webview.postMessage({
-          command: "appendResponse",
+          command: "appendResponseChunk",
           text: "",
           isComplete: true,
         });
@@ -624,65 +642,78 @@ function getWebviewContent(
         }
 
         window.addEventListener('message', event => {
-            const message = event.data;
-            const chatHistory = document.getElementById('chatHistory');
+    const message = event.data;
+    const chatHistory = document.getElementById('chatHistory');
 
-            if (message.command === 'appendResponse') {
-                if (!currentAssistantMessageElement || message.isComplete) {
-                    if (message.text.trim() !== '') {
-                        currentAssistantMessageElement = document.createElement('div');
-                        currentAssistantMessageElement.className = 'message assistant';
-                        chatHistory.appendChild(currentAssistantMessageElement);
-                        assistantMessageBuffer = message.text;
-                        const parsed = DOMPurify.sanitize(marked.parse(assistantMessageBuffer));
-                        currentAssistantMessageElement.innerHTML = parsed;
+    if (message.command === 'appendResponseChunk') {
+        if (!currentAssistantMessageElement) {
+            currentAssistantMessageElement = document.createElement('div');
+            currentAssistantMessageElement.className = 'message assistant';
+            chatHistory.appendChild(currentAssistantMessageElement);
+            
+            // Create raw text container for streaming
+            const tempContent = document.createElement('div');
+            tempContent.style.whiteSpace = 'pre-wrap';
+            tempContent.id = 'temp-streaming-raw';
+            currentAssistantMessageElement.appendChild(tempContent);
+        }
 
-                        // Add copy buttons to code blocks
-                        currentAssistantMessageElement.querySelectorAll('pre code').forEach(codeBlock => {
-                            const wrapper = document.createElement('div');
-                            wrapper.className = 'code-block-wrapper';
-                            codeBlock.parentNode.replaceChild(wrapper, codeBlock);
-                            wrapper.appendChild(codeBlock);
+        const tempContent = document.getElementById('temp-streaming-raw');
+        
+        if (message.isComplete) {
+            // Get the complete raw text
+            const fullRawText = tempContent.textContent;
+            
+            // Create final container for parsed Markdown
+            const finalContent = document.createElement('div');
+            
+            // Parse and sanitize
+            const parsedHtml = DOMPurify.sanitize(marked.parse(fullRawText), {
+                ALLOWED_TAGS: ['p', 'pre', 'code', 'strong', 'em', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 
+                             'ul', 'ol', 'li', 'blockquote', 'hr', 'br', 'div', 'span', 'button'],
+                ALLOWED_ATTR: ['class', 'id', 'onclick']
+            });
+            
+            finalContent.innerHTML = parsedHtml;
 
-                            const copyButton = document.createElement('button');
-                            copyButton.className = 'copy-button';
-                            copyButton.textContent = 'Copy';
-                            copyButton.onclick = () => copyCodeToClipboard(codeBlock.textContent);
-                            wrapper.appendChild(copyButton);
-                        });
+            // Replace temporary container with final content
+            currentAssistantMessageElement.replaceChild(
+                finalContent,
+                tempContent
+            );
 
-                        hljs.highlightAll();
-                    }
-                } else {
-                    assistantMessageBuffer += message.text;
-                    const parsed = DOMPurify.sanitize(marked.parse(assistantMessageBuffer));
-                    currentAssistantMessageElement.innerHTML = parsed;
+            // Process code blocks
+            finalContent.querySelectorAll('pre code').forEach(codeBlock => {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'code-block-wrapper';
+                
+                const copyButton = document.createElement('button');
+                copyButton.className = 'copy-button';
+                copyButton.textContent = 'Copy';
+                copyButton.onclick = () => copyCodeToClipboard(codeBlock.textContent);
+                
+                codeBlock.parentNode.insertBefore(wrapper, codeBlock);
+                wrapper.appendChild(codeBlock);
+                wrapper.appendChild(copyButton);
+            });
 
-                    // Add copy buttons to code blocks
-                    currentAssistantMessageElement.querySelectorAll('pre code').forEach(codeBlock => {
-                        const wrapper = document.createElement('div');
-                        wrapper.className = 'code-block-wrapper';
-                        codeBlock.parentNode.replaceChild(wrapper, codeBlock);
-                        wrapper.appendChild(codeBlock);
+            // Apply syntax highlighting
+            hljs.highlightAll();
 
-                        const copyButton = document.createElement('button');
-                        copyButton.className = 'copy-button';
-                        copyButton.textContent = 'Copy';
-                        copyButton.onclick = () => copyCodeToClipboard(codeBlock.textContent);
-                        wrapper.appendChild(copyButton);
-                    });
+            // Cleanup
+            currentAssistantMessageElement = null;
+        } else {
+            // Append raw text to temporary container
+            tempContent.textContent += message.text;
+        }
 
-                    hljs.highlightAll();
-                }
-
-                chatHistory.scrollTop = chatHistory.scrollHeight;
-
-                if (message.isComplete) {
-                    currentAssistantMessageElement = null;
-                    assistantMessageBuffer = '';
-                }
-            }
-        });
+        // Maintain scroll position
+        const isNearBottom = chatHistory.scrollHeight - chatHistory.clientHeight <= chatHistory.scrollTop + 100;
+        if (isNearBottom) {
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+        }
+    }
+});
 
         document.getElementById('userInput').addEventListener('keydown', (event) => {
             if (event.key === 'Enter') {
