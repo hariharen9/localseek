@@ -401,6 +401,34 @@ function getWebviewContent(
                 overflow: hidden;
             }
 
+            .message.user {
+              animation: messageSlide 0.3s ease-out;
+            }
+
+            @keyframes messageSlide {
+              from { transform: translateX(20px); opacity: 0; }
+              to { transform: translateX(0); opacity: 1; }
+            }
+
+            .typing-indicator {
+              display: flex;
+              gap: 0.25rem;
+              padding: 1rem;
+            }
+
+            .dot {
+              width: 8px;
+              height: 8px;
+              border-radius: 50%;
+              background: var(--primary);
+              animation: bounce 1.4s infinite;
+            }
+
+            @keyframes bounce {
+              0%, 80%, 100% { transform: translateY(0); }
+              40% { transform: translateY(-6px); }
+            }
+
             #modelSelector {
                 font-family: "Inter", "Arial", sans-serif;
                 margin: 1rem;
