@@ -13,6 +13,12 @@ LocalSeek is a powerful, privacy-first AI chat extension for Visual Studio Code 
 - **Offline-Ready**: Works without internet connection
 - **Local Model Management**: Seamlessly use any Ollama-compatible model
 
+### 🌏 Visually Stunning
+
+- **NeverBeforeSeen Look**: Beautiful UI with **Webview API** integrated directly within VSCode
+- **Markdown Support**: Supports MD on the **STREAMED** AI's response, so it is easy to understand
+- **Talk, Copy, Exit**: User friendly chat interface like mobile phones with many features
+
 ### 🚀 Seamless VSCode Integration
 
 - Integrated sidebar AI chat view
@@ -22,10 +28,10 @@ LocalSeek is a powerful, privacy-first AI chat extension for Visual Studio Code 
 
 ### 🔒 Local Processing Advantages
 
-- Enhanced Privacy: Your conversations never leave your computer
-- Reduced Latency: Direct local model access
-- Cost-Effective: No subscription or per-token charges
-- Customizable: Use any locally hosted AI model
+- **Enhanced Privacy**: Your conversations never leave your computer
+- **Reduced Latency**: Direct local model access
+- **Cost-Effective**: No subscription or per-token charges
+- **Customizable**: Use any locally hosted AI model
 
 ## 📋 Prerequisites
 
@@ -40,10 +46,10 @@ LocalSeek is a powerful, privacy-first AI chat extension for Visual Studio Code 
 
 ```bash
 # Pull recommended models
-ollama pull deepseek-r1:14b # The best in my opinion
-ollama pull mistral         # Balanced performance
-ollama pull llama3          # Versatile model
-ollama pull phi3            # Lightweight option
+ollama pull deepseek-r1:14b   # The best in my opinion
+ollama pull mistral           # Balanced performance
+ollama pull llama3.2          # Versatile model
+ollama pull phi3              # Lightweight option
 ```
 
 ## 🔧 Installation
@@ -88,22 +94,17 @@ Customize Ollama connection in VSCode Settings:
 - Search "LocalSeek"
 - Modify "Ollama Host" if needed
 
-### Supported Configuration Options
-
-- Custom Ollama host address
-- Default model selection
-- Response streaming preferences
-
 ## 🔬 Supported Models
 
-LocalSeek works with any Ollama-compatible model (Preferrably DeepSeek 😉), including:
+LocalSeek works with any Ollama-compatible model including but not limited to:
 
+- DeepSeek-R1
 - Mistral
 - Llama 3
 - Phi-3
 - CodeLlama
 - Mixtral
-- And many more!
+- ...
 
 ## 🛡️ Privacy Commitment
 

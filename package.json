@@ -2,7 +2,7 @@
   "name": "localseek",
   "displayName": "LocalSeek",
   "description": "Chat with your LLMs completely locally",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "Hariharen",
   "private": false,
   "license": "MIT",
@@ -23,7 +23,8 @@
     "chat",
     "llm",
     "ollama",
-    "local"
+    "local",
+    "deepseek"
   ],
   "icon": "media/LOCALSEEK-logo.png",
   "galleryBanner": {
@@ -58,7 +59,7 @@
         {
           "type": "webview",
           "id": "localseek-chat",
-          "name": "AI Chat",
+          "name": "LocalSeek AI Chat",
           "icon": "media/sidebar.svg",
           "contextualTitle": "LocalSeek Chat"
         }

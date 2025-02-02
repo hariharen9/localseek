@@ -1,166 +1,175 @@
-import * as vscode from 'vscode';
-import { Ollama } from 'ollama';
+import * as vscode from "vscode";
+import { Ollama } from "ollama";
 
 export function activate(context: vscode.ExtensionContext) {
-    const config = vscode.workspace.getConfiguration('localseek');
-    const ollama = new Ollama({ 
-        host: config.get('ollamaHost') || 'http://localhost:11434' 
-    });
-    
-    let currentPanel: vscode.WebviewPanel | undefined;
+  const config = vscode.workspace.getConfiguration("localseek");
+  const ollama = new Ollama({
+    host: config.get("ollamaHost") || "http://localhost:11434",
+  });
 
-    // Register command to open chat panel
-    context.subscriptions.push(
-        vscode.commands.registerCommand('localseek.openChat', async () => {
-            if (currentPanel) {
-                currentPanel.reveal(vscode.ViewColumn.Beside);
-                return;
-            }
+  let currentPanel: vscode.WebviewPanel | undefined;
 
-            currentPanel = createWebviewPanel(context);
-            setupWebview(currentPanel, context, ollama, () => {
-                currentPanel = undefined;
-            });
-        })
-    );
+  // Register command to open chat panel
+  context.subscriptions.push(
+    vscode.commands.registerCommand("localseek.openChat", async () => {
+      if (currentPanel) {
+        currentPanel.reveal(vscode.ViewColumn.Beside);
+        return;
+      }
 
-    // Register sidebar webview view
-    context.subscriptions.push(
-        vscode.window.registerWebviewViewProvider(
-            'localseek-chat',
-            new ChatWebviewViewProvider(context, ollama)
-        )
-    );
+      currentPanel = createWebviewPanel(context);
+      setupWebview(currentPanel, context, ollama, () => {
+        currentPanel = undefined;
+      });
+    })
+  );
+
+  // Register sidebar webview view
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(
+      "localseek-chat",
+      new ChatWebviewViewProvider(context, ollama)
+    )
+  );
 }
 
-function createWebviewPanel(context: vscode.ExtensionContext): vscode.WebviewPanel {
-    // Properly declare and initialize the panel
-    const panel = vscode.window.createWebviewPanel(
-        'localseekChat',
-        'LocalSeek AI Chat',
-        vscode.ViewColumn.Beside,
-        {
-            enableScripts: true,
-            retainContextWhenHidden: true,
-            localResourceRoots: [context.extensionUri]
-        }
-    );
+function createWebviewPanel(
+  context: vscode.ExtensionContext
+): vscode.WebviewPanel {
+  // Properly declare and initialize the panel
+  const panel = vscode.window.createWebviewPanel(
+    "localseekChat",
+    "LocalSeek AI Chat",
+    vscode.ViewColumn.Beside,
+    {
+      enableScripts: true,
+      retainContextWhenHidden: true,
+      localResourceRoots: [context.extensionUri],
+    }
+  );
 
-    // Add icon to title bar
-    panel.iconPath = {
-        light: vscode.Uri.joinPath(context.extensionUri, 'media', 'sidebar.svg'),
-        dark: vscode.Uri.joinPath(context.extensionUri, 'media', 'sidebar.svg')
-    };
+  // Add icon to title bar
+  panel.iconPath = {
+    light: vscode.Uri.joinPath(context.extensionUri, "media", "sidebar.svg"),
+    dark: vscode.Uri.joinPath(context.extensionUri, "media", "sidebar.svg"),
+  };
 
-    return panel;  // Return the properly declared panel
+  return panel; 
 }
 
 async function setupWebview(
-    panel: vscode.WebviewPanel,
-    context: vscode.ExtensionContext,
-    ollama: Ollama,
-    onDispose: () => void
+  panel: vscode.WebviewPanel,
+  context: vscode.ExtensionContext,
+  ollama: Ollama,
+  onDispose: () => void
 ) {
-    let models: string[] = [];
-    try {
-        const response = await ollama.list();
-        models = response.models.map((model: any) => model.name);
-    } catch (error) {
-        vscode.window.showErrorMessage('Failed to connect to Ollama. Make sure it\'s running.');
-    }
+  let models: string[] = [];
+  try {
+    const response = await ollama.list();
+    models = response.models.map((model: any) => model.name);
+  } catch (error) {
+    vscode.window.showErrorMessage(
+      "Failed to connect to Ollama. Make sure it's running."
+    );
+  }
 
-    panel.webview.html = getWebviewContent(models,context);
-    let conversationHistory: { role: string; content: string }[] = [];
+  panel.webview.html = getWebviewContent(models, context);
+  let conversationHistory: { role: string; content: string }[] = [];
 
-    panel.webview.onDidReceiveMessage(async (message) => {
-        handleMessage(message, panel, conversationHistory, ollama);
-    });
+  panel.webview.onDidReceiveMessage(async (message) => {
+    handleMessage(message, panel, conversationHistory, ollama);
+  });
 
-    panel.onDidDispose(() => {
-        onDispose();
-    });
+  panel.onDidDispose(() => {
+    onDispose();
+  });
 }
 
 class ChatWebviewViewProvider implements vscode.WebviewViewProvider {
-    constructor(
-        private readonly context: vscode.ExtensionContext,
-        private readonly ollama: Ollama
-    ) {}
+  constructor(
+    private readonly context: vscode.ExtensionContext,
+    private readonly ollama: Ollama
+  ) {}
 
-    resolveWebviewView(webviewView: vscode.WebviewView) {
-        webviewView.webview.options = {
-            enableScripts: true,
-            localResourceRoots: [this.context.extensionUri]
-        };
+  resolveWebviewView(webviewView: vscode.WebviewView) {
+    webviewView.webview.options = {
+      enableScripts: true,
+      localResourceRoots: [this.context.extensionUri],
+    };
 
-        let models: string[] = [];
-        this.ollama.list().then(response => {
-            models = response.models.map((model: any) => model.name);
-            webviewView.webview.html = getWebviewContent(models, this.context);
-        }).catch(error => {
-            webviewView.webview.html = getWebviewContent([], this.context);
-        });
+    let models: string[] = [];
+    this.ollama
+      .list()
+      .then((response) => {
+        models = response.models.map((model: any) => model.name);
+        webviewView.webview.html = getWebviewContent(models, this.context);
+      })
+      .catch((error) => {
+        webviewView.webview.html = getWebviewContent([], this.context);
+      });
 
-        let conversationHistory: { role: string; content: string }[] = [];
+    let conversationHistory: { role: string; content: string }[] = [];
 
-        webviewView.webview.onDidReceiveMessage(async (message) => {
-            handleMessage(message, webviewView, conversationHistory, this.ollama);
-        });
-    }
+    webviewView.webview.onDidReceiveMessage(async (message) => {
+      handleMessage(message, webviewView, conversationHistory, this.ollama);
+    });
+  }
 }
 
 async function handleMessage(
-    message: any,
-    webview: vscode.WebviewPanel | vscode.WebviewView,
-    conversationHistory: { role: string; content: string }[],
-    ollama: Ollama
+  message: any,
+  webview: vscode.WebviewPanel | vscode.WebviewView,
+  conversationHistory: { role: string; content: string }[],
+  ollama: Ollama
 ) {
-    switch (message.command) {
-        case 'sendMessage':
-            try {
-                conversationHistory.push({ role: 'user', content: message.text });
-                
-                const response = await ollama.chat({
-                    model: message.model,
-                    messages: conversationHistory,
-                    stream: true
-                });
+  switch (message.command) {
+    case "sendMessage":
+      try {
+        conversationHistory.push({ role: "user", content: message.text });
 
-                let fullResponse = '';
-                for await (const part of response) {
-                    if (part.message?.content?.trim()) {
-                        fullResponse += part.message.content;
-                        webview.webview.postMessage({
-                            command: 'appendResponse',
-                            text: part.message.content,
-                            isComplete: false
-                        });
-                    }
-                }
+        const response = await ollama.chat({
+          model: message.model,
+          messages: conversationHistory,
+          stream: true,
+        });
 
-                if (fullResponse.trim()) {
-                    conversationHistory.push({ role: 'assistant', content: fullResponse });
-                }
+        let fullResponse = "";
+        for await (const part of response) {
+          if (part.message?.content?.trim()) {
+            fullResponse += part.message.content;
+            webview.webview.postMessage({
+              command: "appendResponse",
+              text: part.message.content,
+              isComplete: false,
+            });
+          }
+        }
 
-                webview.webview.postMessage({
-                    command: 'appendResponse',
-                    text: '',
-                    isComplete: true
-                });
-            } catch (error) {
-                vscode.window.showErrorMessage('Error generating response');
-            }
-            break;
-    }
+        if (fullResponse.trim()) {
+          conversationHistory.push({
+            role: "assistant",
+            content: fullResponse,
+          });
+        }
+
+        webview.webview.postMessage({
+          command: "appendResponse",
+          text: "",
+          isComplete: true,
+        });
+      } catch (error) {
+        vscode.window.showErrorMessage("Error generating response");
+      }
+      break;
+  }
 }
 
-
-// Keep your existing getWebviewContent function unchanged
-function getWebviewContent(models: string[],  context: vscode.ExtensionContext): string {
-
-
-    if (models.length === 0) {
-        return /*html*/`
+function getWebviewContent(
+  models: string[],
+  context: vscode.ExtensionContext
+): string {
+  if (models.length === 0) {
+    return /*html*/ `
         <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -261,15 +270,27 @@ function getWebviewContent(models: string[],  context: vscode.ExtensionContext):
     </footer>
 </body>
 </html>`;
-    }
+  }
 
-    return /*html*/`
+  return /*html*/ `
     <!DOCTYPE html>
     <html lang="en">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>LocalSeek: "YOUR" AI Chat</title>
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script>
+        marked.setOptions({
+            highlight: function(code, lang) {
+                const language = hljs.getLanguage(lang) ? lang : 'plaintext';
+                return hljs.highlight(code, { language }).value;
+            }
+        });
+    </script>
         <style>
             :root {
                 --primary: rgba(99, 102, 241, 0.9);
@@ -291,61 +312,6 @@ function getWebviewContent(models: string[],  context: vscode.ExtensionContext):
                 justify-content: center;
                 align-items: center;
             }
-            /* Add these to your existing styles */
-.thinking {
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 0.75rem;
-    margin-bottom: 1rem;
-    overflow: hidden;
-}
-
-.thinking summary {
-    padding: 0.75rem 1rem;
-    cursor: pointer;
-    background: rgba(99, 102, 241, 0.1);
-    list-style: none;
-    font-weight: 500;
-}
-
-.thinking-content {
-    padding: 1rem;
-}
-
-.response-content {
-    margin-top: 1rem;
-}
-
-.copy-button {
-    position: absolute;
-    top: 0.5rem;
-    right: 0.5rem;
-    padding: 0.25rem 0.5rem;
-    font-size: 0.75rem;
-    background: var(--primary);
-    border: none;
-    border-radius: 0.375rem;
-    color: white;
-    opacity: 0.8;
-    transition: opacity 0.2s;
-}
-
-.copy-button:hover {
-    opacity: 1;
-}
-
-pre {
-    margin: 1rem 0;
-    padding: 1.5rem;
-    background: rgba(0, 0, 0, 0.3);
-    border-radius: 0.75rem;
-    overflow-x: auto;
-}
-
-code {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.875rem;
-}
-
             .header {
                 width: 100%;
                 text-align: center;
@@ -353,6 +319,30 @@ code {
                 top: 1rem;
                 left: 50%;
                 transform: translateX(-50%);
+            }
+
+            .copy-button {
+                position: absolute;
+                top: 0.5rem;
+                right: 0.5rem;
+                padding: 0.25rem 0.5rem;
+                background: rgba(99, 102, 241, 0.9);
+                border: none;
+                border-radius: 0.375rem;
+                color: white;
+                font-size: 0.75rem;
+                cursor: pointer;
+                opacity: 0.8;
+                transition: opacity 0.2s ease;
+            }
+
+            .copy-button:hover {
+                opacity: 1;
+            }
+
+            .code-block-wrapper {
+                position: relative;
+                margin: 1rem 0;
             }
 
             footer {
@@ -369,7 +359,6 @@ code {
 
             footer a {
                 color: rgb(255, 0, 0);
-                text-decoration: none;
             }
 
             .chat-container {
@@ -540,7 +529,9 @@ code {
         </div>
         <div class="chat-container">
             <select id="modelSelector">
-                ${models.map(model => `<option value="${model}">${model}</option>`).join('')}
+                ${models
+                  .map((model) => `<option value="${model}">${model}</option>`)
+                  .join("")}
             </select>
             
             <div id="chatHistory"></div>
@@ -561,9 +552,9 @@ code {
             </p>
         </footer>
         <script>
-            // Existing JavaScript remains the same, with updated class names
             const vscode = acquireVsCodeApi();
             let currentAssistantMessageElement = null;
+            let assistantMessageBuffer = '';
 
             function sendMessage() {
                 const input = document.getElementById('userInput');
@@ -589,36 +580,88 @@ code {
                 chatHistory.scrollTop = chatHistory.scrollHeight;
             }
 
-            window.addEventListener('message', event => {
-                const message = event.data;
-                const chatHistory = document.getElementById('chatHistory');
-
-                if (message.command === 'appendResponse') {
-                    if (!currentAssistantMessageElement || message.isComplete) {
-                        if (message.text.trim() !== '') {
-                            currentAssistantMessageElement = document.createElement('div');
-                            currentAssistantMessageElement.className = 'message assistant';
-                            currentAssistantMessageElement.textContent = message.text;
-                            chatHistory.appendChild(currentAssistantMessageElement);
-                        }
-                    } else {
-                        currentAssistantMessageElement.textContent += message.text;
-                    }
-
-                    chatHistory.scrollTop = chatHistory.scrollHeight;
-
-                    if (message.isComplete) {
-                        currentAssistantMessageElement = null;
-                    }
-                }
+            // Function to copy code to clipboard
+        function copyCodeToClipboard(code) {
+            navigator.clipboard.writeText(code).then(() => {
+                vscode.postMessage({
+                    command: 'showInformationMessage',
+                    text: 'Code copied to clipboard!'
+                });
+            }).catch(err => {
+                vscode.postMessage({
+                    command: 'showErrorMessage',
+                    text: 'Failed to copy code to clipboard.'
+                });
             });
+        }
 
-            document.getElementById('userInput').addEventListener('keydown', (event) => {
-                if (event.key === 'Enter') {
-                    event.preventDefault();
-                    sendMessage();
+        window.addEventListener('message', event => {
+            const message = event.data;
+            const chatHistory = document.getElementById('chatHistory');
+
+            if (message.command === 'appendResponse') {
+                if (!currentAssistantMessageElement || message.isComplete) {
+                    if (message.text.trim() !== '') {
+                        currentAssistantMessageElement = document.createElement('div');
+                        currentAssistantMessageElement.className = 'message assistant';
+                        chatHistory.appendChild(currentAssistantMessageElement);
+                        assistantMessageBuffer = message.text;
+                        const parsed = DOMPurify.sanitize(marked.parse(assistantMessageBuffer));
+                        currentAssistantMessageElement.innerHTML = parsed;
+
+                        // Add copy buttons to code blocks
+                        currentAssistantMessageElement.querySelectorAll('pre code').forEach(codeBlock => {
+                            const wrapper = document.createElement('div');
+                            wrapper.className = 'code-block-wrapper';
+                            codeBlock.parentNode.replaceChild(wrapper, codeBlock);
+                            wrapper.appendChild(codeBlock);
+
+                            const copyButton = document.createElement('button');
+                            copyButton.className = 'copy-button';
+                            copyButton.textContent = 'Copy';
+                            copyButton.onclick = () => copyCodeToClipboard(codeBlock.textContent);
+                            wrapper.appendChild(copyButton);
+                        });
+
+                        hljs.highlightAll();
+                    }
+                } else {
+                    assistantMessageBuffer += message.text;
+                    const parsed = DOMPurify.sanitize(marked.parse(assistantMessageBuffer));
+                    currentAssistantMessageElement.innerHTML = parsed;
+
+                    // Add copy buttons to code blocks
+                    currentAssistantMessageElement.querySelectorAll('pre code').forEach(codeBlock => {
+                        const wrapper = document.createElement('div');
+                        wrapper.className = 'code-block-wrapper';
+                        codeBlock.parentNode.replaceChild(wrapper, codeBlock);
+                        wrapper.appendChild(codeBlock);
+
+                        const copyButton = document.createElement('button');
+                        copyButton.className = 'copy-button';
+                        copyButton.textContent = 'Copy';
+                        copyButton.onclick = () => copyCodeToClipboard(codeBlock.textContent);
+                        wrapper.appendChild(copyButton);
+                    });
+
+                    hljs.highlightAll();
                 }
-            });
+
+                chatHistory.scrollTop = chatHistory.scrollHeight;
+
+                if (message.isComplete) {
+                    currentAssistantMessageElement = null;
+                    assistantMessageBuffer = '';
+                }
+            }
+        });
+
+        document.getElementById('userInput').addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                sendMessage();
+            }
+        });
             
         </script>
     </body>
@@ -628,5 +671,5 @@ code {
 
 
 export function deactivate() {
-    // No resources to clean up
+  // No resources to clean up
 }
