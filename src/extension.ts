@@ -54,7 +54,7 @@ function createWebviewPanel(
     dark: vscode.Uri.joinPath(context.extensionUri, "media", "sidebar.svg"),
   };
 
-  return panel; 
+  return panel;
 }
 
 async function setupWebview(
@@ -89,7 +89,7 @@ class ChatWebviewViewProvider implements vscode.WebviewViewProvider {
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly ollama: Ollama
-  ) {}
+  ) { }
 
   resolveWebviewView(webviewView: vscode.WebviewView) {
     webviewView.webview.options = {
@@ -136,12 +136,11 @@ async function handleMessage(
         let fullResponse = "";
         let buffer = "";
         for await (const part of response) {
-          if (part.message?.content?.trim()) {
+          if (part.message.content) {
             const chunk = part.message.content;
             fullResponse += chunk;
             buffer += chunk;
 
-            // Send chunks more frequently for better streaming feel
             if (buffer.length > 50 || chunk.includes('\n')) {
               webview.webview.postMessage({
                 command: "appendResponseChunk",
@@ -162,7 +161,7 @@ async function handleMessage(
           });
         }
 
-        if (fullResponse.trim()) {
+        if (fullResponse) {
           conversationHistory.push({
             role: "assistant",
             content: fullResponse,
@@ -275,7 +274,7 @@ function getWebviewContent(
 </head>
 <body>
     <div class="title">LocalSeek</div>
-    <div class="tagline">Seek your answers <i>LOCALLY</i> within VSCode 🥳</div>
+    <div class="tagline">Seek your answers <i>💯LOCALLY</i> within VSCode </div>
     
     <div class="error-card">
         <div class="error-icon">⚠️</div>
@@ -403,6 +402,22 @@ function getWebviewContent(
                 color: rgba(255, 255, 255, 0.8);
                 text-align: center;
                 margin-bottom: 1.5rem;
+            }
+
+            pre code {
+                display: block;
+                overflow-x: auto;
+                padding: 1em;
+                background: rgb(255, 255, 255) !important;
+                border-radius: 0.5rem;
+                margin: 0.5rem 0;
+            }
+
+            .code-block-wrapper {
+                position: relative;
+                margin: 1rem 0;
+                background: rgba(255, 255, 255, 0);
+                border-radius: 0.5rem;
             }
 
             .chat-container {
@@ -571,13 +586,13 @@ function getWebviewContent(
     <body>
         <div class="header">
             <div class="title">LocalSeek</div>
-            <div class="tagline">Seek your answers <i>LOCALLY</i> within VSCode 🥳</div>
+            <div class="tagline">Seek your answers <i>💯LOCALLY</i> within VSCode </div>
         </div>
         <div class="chat-container">
             <select id="modelSelector">
                 ${models
-                  .map((model) => `<option value="${model}">${model}</option>`)
-                  .join("")}
+      .map((model) => `<option value="${model}">${model}</option>`)
+      .join("")}
             </select>
             
             <div id="chatHistory"></div>
@@ -598,131 +613,141 @@ function getWebviewContent(
             </p>
         </footer>
         <script>
-            const vscode = acquireVsCodeApi();
-            let currentAssistantMessageElement = null;
-            let assistantMessageBuffer = '';
+    const vscode = acquireVsCodeApi();
+    let currentAssistantMessageElement = null;
+    let isProcessingResponse = false;
 
-            function sendMessage() {
-                const input = document.getElementById('userInput');
-                const modelSelector = document.getElementById('modelSelector');
-                const chatHistory = document.getElementById('chatHistory');
-                
-                const userMessage = input.value.trim();
-                if (!userMessage) return;
-
-                chatHistory.innerHTML += \`
-                    <div class="message user">
-                        \${userMessage}
-                    </div>
-                \`;
-                
-                vscode.postMessage({
-                    command: 'sendMessage',
-                    text: userMessage,
-                    model: modelSelector.value
-                });
-                
-                input.value = '';
-                chatHistory.scrollTop = chatHistory.scrollHeight;
-            }
-
-            // Function to copy code to clipboard
-        function copyCodeToClipboard(code) {
-            navigator.clipboard.writeText(code).then(() => {
-                vscode.postMessage({
-                    command: 'showInformationMessage',
-                    text: 'Code copied to clipboard!'
-                });
-            }).catch(err => {
-                vscode.postMessage({
-                    command: 'showErrorMessage',
-                    text: 'Failed to copy code to clipboard.'
-                });
+    function sendMessage() {
+        if (isProcessingResponse) {
+            vscode.postMessage({
+                command: 'showWarningMessage',
+                text: 'Please wait for current response to complete'
             });
+            return;
         }
 
-        window.addEventListener('message', event => {
-    const message = event.data;
-    const chatHistory = document.getElementById('chatHistory');
-
-    if (message.command === 'appendResponseChunk') {
-        if (!currentAssistantMessageElement) {
-            currentAssistantMessageElement = document.createElement('div');
-            currentAssistantMessageElement.className = 'message assistant';
-            chatHistory.appendChild(currentAssistantMessageElement);
-            
-            // Create raw text container for streaming
-            const tempContent = document.createElement('div');
-            tempContent.style.whiteSpace = 'pre-wrap';
-            tempContent.id = 'temp-streaming-raw';
-            currentAssistantMessageElement.appendChild(tempContent);
-        }
-
-        const tempContent = document.getElementById('temp-streaming-raw');
+        const input = document.getElementById('userInput');
+        const modelSelector = document.getElementById('modelSelector');
+        const chatHistory = document.getElementById('chatHistory');
+        const userMessage = input.value;
         
-        if (message.isComplete) {
-            // Get the complete raw text
-            const fullRawText = tempContent.textContent;
-            
-            // Create final container for parsed Markdown
-            const finalContent = document.createElement('div');
-            
-            // Parse and sanitize
-            const parsedHtml = DOMPurify.sanitize(marked.parse(fullRawText), {
-                ALLOWED_TAGS: ['p', 'pre', 'code', 'strong', 'em', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 
-                             'ul', 'ol', 'li', 'blockquote', 'hr', 'br', 'div', 'span', 'button'],
-                ALLOWED_ATTR: ['class', 'id', 'onclick']
-            });
-            
-            finalContent.innerHTML = parsedHtml;
+        if (!userMessage) return;
 
-            // Replace temporary container with final content
-            currentAssistantMessageElement.replaceChild(
-                finalContent,
-                tempContent
-            );
+        // Add user message
+        chatHistory.innerHTML += \`
+            <div class="message user">
+                \${userMessage}
+            </div>
+        \`;
 
-            // Process code blocks
-            finalContent.querySelectorAll('pre code').forEach(codeBlock => {
-                const wrapper = document.createElement('div');
-                wrapper.className = 'code-block-wrapper';
-                
-                const copyButton = document.createElement('button');
-                copyButton.className = 'copy-button';
-                copyButton.textContent = 'Copy';
-                copyButton.onclick = () => copyCodeToClipboard(codeBlock.textContent);
-                
-                codeBlock.parentNode.insertBefore(wrapper, codeBlock);
-                wrapper.appendChild(codeBlock);
-                wrapper.appendChild(copyButton);
-            });
-
-            // Apply syntax highlighting
-            hljs.highlightAll();
-
-            // Cleanup
-            currentAssistantMessageElement = null;
-        } else {
-            // Append raw text to temporary container
-            tempContent.textContent += message.text;
-        }
-
-        // Maintain scroll position
-        const isNearBottom = chatHistory.scrollHeight - chatHistory.clientHeight <= chatHistory.scrollTop + 100;
-        if (isNearBottom) {
-            chatHistory.scrollTop = chatHistory.scrollHeight;
-        }
-    }
-});
-
-        document.getElementById('userInput').addEventListener('keydown', (event) => {
-            if (event.key === 'Enter') {
-                event.preventDefault();
-                sendMessage();
-            }
+        // Send to extension
+        vscode.postMessage({
+            command: 'sendMessage',
+            text: userMessage,
+            model: modelSelector.value
         });
-            
-        </script>
+
+        input.value = '';
+        chatHistory.scrollTop = chatHistory.scrollHeight;
+        isProcessingResponse = true;
+    }
+
+    // Original input handler
+    document.getElementById('userInput').addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault();
+            sendMessage();
+        }
+    });
+
+    
+    window.addEventListener('message', async (event) => {
+        const message = event.data;
+        const chatHistory = document.getElementById('chatHistory');
+
+        try {
+            if (message.command === 'appendResponseChunk') {
+                if (!currentAssistantMessageElement) {
+                    currentAssistantMessageElement = document.createElement('div');
+                    currentAssistantMessageElement.className = 'message assistant';
+                    chatHistory.appendChild(currentAssistantMessageElement);
+                    
+                    const tempContent = document.createElement('div');
+                    tempContent.style.whiteSpace = 'pre-wrap';
+                    tempContent.id = 'temp-streaming-raw';
+                    currentAssistantMessageElement.appendChild(tempContent);
+                }
+
+                const tempContent = document.getElementById('temp-streaming-raw');
+                let chunkText = message.text;
+
+
+                tempContent.textContent += chunkText;
+
+                // Auto-scroll only if near bottom
+                const isNearBottom = chatHistory.scrollHeight - chatHistory.clientHeight <= chatHistory.scrollTop + 100;
+                if (isNearBottom) {
+                    chatHistory.scrollTop = chatHistory.scrollHeight;
+                }
+
+                if (message.isComplete) {
+                    // Final processing before Markdown conversion
+                    const finalText = tempContent.textContent
+                    
+                    // Convert to Markdown
+                    const parsedHtml = marked.parse(finalText);
+
+
+                    // Create final content container
+                    const finalContent = document.createElement('div');
+                    finalContent.innerHTML = parsedHtml;
+
+                    // Process code blocks
+                    finalContent.querySelectorAll('pre code').forEach(codeBlock => {
+                        const wrapper = document.createElement('div');
+                        wrapper.className = 'code-block-wrapper';
+                        
+                        const copyButton = document.createElement('button');
+                        copyButton.className = 'copy-button';
+                        copyButton.textContent = 'Copy';
+                        copyButton.onclick = () => copyCodeToClipboard(codeBlock.textContent);
+                        
+                        codeBlock.parentNode.insertBefore(wrapper, codeBlock);
+                        wrapper.appendChild(codeBlock);
+                        wrapper.appendChild(copyButton);
+                    });
+
+                    // Replace temporary content
+                    currentAssistantMessageElement.replaceChild(
+                        finalContent,
+                        tempContent
+                    );
+
+                    // Apply syntax highlighting
+                    hljs.highlightAll();
+
+                    // Reset state
+                    currentAssistantMessageElement = null;
+                    isProcessingResponse = false;
+                }
+            }
+        } catch (error) {
+            console.error('Error handling message:', error);
+            isProcessingResponse = false;
+        }
+    });
+
+    // Copy function
+    function copyCodeToClipboard(code) {
+        navigator.clipboard.writeText(code).then(() => {
+            vscode.postMessage({
+                command: 'showInformationMessage',
+                text: 'Code copied to clipboard!'
+            });
+        });
+    }
+</script>
+
     </body>
     </html>
     `;

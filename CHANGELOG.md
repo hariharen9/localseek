@@ -1,5 +1,9 @@
 # Change Log
 
+## [0.0.4] - 2025-02-04
+
+- Fixed a major bug where codeblocks fail to render properly
+
 ## [0.0.3] - 2025-02-03
 
 - Added a new stream feature, so the AI response will be streamed without rendering at first, once completely done, then it will me MD rendered.
