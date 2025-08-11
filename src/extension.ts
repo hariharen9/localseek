@@ -466,8 +466,8 @@ function getWebviewContent(
                 font-family: "Inter", "Arial", sans-serif;
                 margin: 1rem;
                 padding: 0.75rem 1rem;
-                background: rgba(255, 255, 255, 0.05);
-                border: 1px solid var(--border);
+                background: var(--surface);
+                border: 1px solid var(--primary);
                 border-radius: 1rem;
                 color: white;
                 font-style: italic;
@@ -522,6 +522,7 @@ function getWebviewContent(
 
             #userInput {
                 flex: 1;
+                min-width: 0;
                 padding: 0.875rem 1.25rem;
                 background: rgba(255, 255, 255, 0.05);
                 border: 1px solid var(--border);
@@ -529,6 +530,10 @@ function getWebviewContent(
                 color: white;
                 font-size: 0.9375rem;
                 transition: all 0.2s ease;
+                resize: none;
+                font-family: inherit;
+                line-height: 1.5;
+                max-height: 150px;
             }
 
             #userInput:focus {
@@ -549,6 +554,7 @@ function getWebviewContent(
                 display: flex;
                 align-items: center;
                 gap: 0.5rem;
+                flex-shrink: 0; /* Add this */
             }
 
             button:hover {
@@ -581,6 +587,35 @@ function getWebviewContent(
                 background: rgba(255, 255, 255, 0.2);
                 border-radius: 4px;
             }
+
+            @media (max-width: 600px) {
+                .tagline {
+                    font-size: 1rem;
+                }
+
+                .input-container {
+                    padding: 0.5rem;
+                    gap: 0.5rem;
+                }
+            }
+
+            @media (max-width: 400px) {
+                .title {
+                    font-size: 2rem;
+                }
+
+                button span {
+                    display: none;
+                }
+
+                button {
+                    padding: 0.875rem;
+                }
+
+                button svg {
+                    margin-right: 0;
+                }
+            }
         </style>
     </head>
     <body>
@@ -598,12 +633,12 @@ function getWebviewContent(
             <div id="chatHistory"></div>
             
             <div class="input-container">
-                <input type="text" id="userInput" placeholder="Ask me anything..." />
+                                <textarea id="userInput" placeholder="Ask me anything..." rows="1"></textarea>
                 <button onclick="sendMessage()">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
             </svg>
-                    Send
+                    <span>Send</span>
                 </button>
             </div>
         </div>
@@ -658,6 +693,12 @@ function getWebviewContent(
             event.preventDefault();
             sendMessage();
         }
+    });
+
+    const userInput = document.getElementById('userInput');
+    userInput.addEventListener('input', () => {
+        userInput.style.height = 'auto';
+        userInput.style.height = (userInput.scrollHeight) + 'px';
     });
 
     
