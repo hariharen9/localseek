@@ -1,11 +1,15 @@
 import * as vscode from "vscode";
 import { Ollama } from "ollama";
+import { ChatHistoryManager, ChatMessage, ChatConversation } from "./chatHistory";
 
 export function activate(context: vscode.ExtensionContext) {
   const config = vscode.workspace.getConfiguration("localseek");
   const ollama = new Ollama({
     host: config.get("ollamaHost") || "http://localhost:11434",
   });
+
+  // Initialize chat history manager
+  const chatHistoryManager = new ChatHistoryManager(context);
 
   let currentPanel: vscode.WebviewPanel | undefined;
 
@@ -18,7 +22,7 @@ export function activate(context: vscode.ExtensionContext) {
       }
 
       currentPanel = createWebviewPanel(context);
-      setupWebview(currentPanel, context, ollama, () => {
+      setupWebview(currentPanel, context, ollama, chatHistoryManager, () => {
         currentPanel = undefined;
       });
     })
@@ -28,7 +32,7 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
       "localseek-chat",
-      new ChatWebviewViewProvider(context, ollama)
+      new ChatWebviewViewProvider(context, ollama, chatHistoryManager)
     )
   );
 }
@@ -36,7 +40,6 @@ export function activate(context: vscode.ExtensionContext) {
 function createWebviewPanel(
   context: vscode.ExtensionContext
 ): vscode.WebviewPanel {
-  // Properly declare and initialize the panel
   const panel = vscode.window.createWebviewPanel(
     "localseekChat",
     "LocalSeek AI Chat",
@@ -48,7 +51,6 @@ function createWebviewPanel(
     }
   );
 
-  // Add icon to title bar
   panel.iconPath = {
     light: vscode.Uri.joinPath(context.extensionUri, "media", "sidebar.svg"),
     dark: vscode.Uri.joinPath(context.extensionUri, "media", "sidebar.svg"),
@@ -61,6 +63,7 @@ async function setupWebview(
   panel: vscode.WebviewPanel,
   context: vscode.ExtensionContext,
   ollama: Ollama,
+  chatHistoryManager: ChatHistoryManager,
   onDispose: () => void
 ) {
   let models: string[] = [];
@@ -74,10 +77,15 @@ async function setupWebview(
   }
 
   panel.webview.html = getWebviewContent(models, context);
-  let conversationHistory: { role: string; content: string }[] = [];
+  
+  // Start with a new conversation
+  let currentConversationId = chatHistoryManager.startNewConversation();
+  let conversationHistory: ChatMessage[] = [];
 
   panel.webview.onDidReceiveMessage(async (message) => {
-    handleMessage(message, panel, conversationHistory, ollama);
+    await handleMessage(message, panel, conversationHistory, ollama, chatHistoryManager, currentConversationId, (newId) => {
+      currentConversationId = newId;
+    });
   });
 
   panel.onDidDispose(() => {
@@ -88,8 +96,9 @@ async function setupWebview(
 class ChatWebviewViewProvider implements vscode.WebviewViewProvider {
   constructor(
     private readonly context: vscode.ExtensionContext,
-    private readonly ollama: Ollama
-  ) { }
+    private readonly ollama: Ollama,
+    private readonly chatHistoryManager: ChatHistoryManager
+  ) {}
 
   resolveWebviewView(webviewView: vscode.WebviewView) {
     webviewView.webview.options = {
@@ -108,10 +117,14 @@ class ChatWebviewViewProvider implements vscode.WebviewViewProvider {
         webviewView.webview.html = getWebviewContent([], this.context);
       });
 
-    let conversationHistory: { role: string; content: string }[] = [];
+    // Start with a new conversation
+    let currentConversationId = this.chatHistoryManager.startNewConversation();
+    let conversationHistory: ChatMessage[] = [];
 
     webviewView.webview.onDidReceiveMessage(async (message) => {
-      handleMessage(message, webviewView, conversationHistory, this.ollama);
+      await handleMessage(message, webviewView, conversationHistory, this.ollama, this.chatHistoryManager, currentConversationId, (newId) => {
+        currentConversationId = newId;
+      });
     });
   }
 }
@@ -119,17 +132,31 @@ class ChatWebviewViewProvider implements vscode.WebviewViewProvider {
 async function handleMessage(
   message: any,
   webview: vscode.WebviewPanel | vscode.WebviewView,
-  conversationHistory: { role: string; content: string }[],
-  ollama: Ollama
+  conversationHistory: ChatMessage[],
+  ollama: Ollama,
+  chatHistoryManager: ChatHistoryManager,
+  currentConversationId: string,
+  setConversationId: (id: string) => void
 ) {
   switch (message.command) {
     case "sendMessage":
       try {
-        conversationHistory.push({ role: "user", content: message.text });
+        const userMessage: ChatMessage = {
+          role: "user",
+          content: message.text
+        };
+
+        conversationHistory.push(userMessage);
+        
+        // Save user message to history
+        await chatHistoryManager.addMessage(currentConversationId, userMessage);
 
         const response = await ollama.chat({
           model: message.model,
-          messages: conversationHistory,
+          messages: conversationHistory.map(msg => ({
+            role: msg.role,
+            content: msg.content
+          })),
           stream: true,
         });
 
@@ -162,10 +189,15 @@ async function handleMessage(
         }
 
         if (fullResponse) {
-          conversationHistory.push({
+          const assistantMessage: ChatMessage = {
             role: "assistant",
-            content: fullResponse,
-          });
+            content: fullResponse
+          };
+
+          conversationHistory.push(assistantMessage);
+          
+          // Save assistant message to history
+          await chatHistoryManager.addMessage(currentConversationId, assistantMessage);
         }
 
         // Finalize the message
@@ -177,6 +209,57 @@ async function handleMessage(
       } catch (error) {
         vscode.window.showErrorMessage("Error generating response");
       }
+      break;
+
+    case "newChat":
+      const newConversationId = chatHistoryManager.startNewConversation();
+      setConversationId(newConversationId);
+      conversationHistory.length = 0; // Clear current conversation
+      webview.webview.postMessage({
+        command: "clearChat"
+      });
+      break;
+
+    case "getChatHistory":
+      const conversations = chatHistoryManager.getAllConversations();
+      webview.webview.postMessage({
+        command: "chatHistoryList",
+        conversations: conversations.map(conv => ({
+          id: conv.id,
+          title: conv.title,
+          lastModified: chatHistoryManager.formatRelativeTime(conv.lastModified),
+          messageCount: conv.messageCount
+        }))
+      });
+      break;
+
+    case "loadConversation":
+      const conversation = chatHistoryManager.getConversation(message.conversationId);
+      if (conversation) {
+        setConversationId(message.conversationId);
+        chatHistoryManager.setCurrentConversation(message.conversationId);
+        conversationHistory.splice(0, conversationHistory.length, ...conversation.messages);
+        
+        webview.webview.postMessage({
+          command: "loadConversationMessages",
+          messages: conversation.messages
+        });
+      }
+      break;
+
+    case "deleteConversation":
+      await chatHistoryManager.deleteConversation(message.conversationId);
+      // Refresh the history list
+      const updatedConversations = chatHistoryManager.getAllConversations();
+      webview.webview.postMessage({
+        command: "chatHistoryList",
+        conversations: updatedConversations.map(conv => ({
+          id: conv.id,
+          title: conv.title,
+          lastModified: chatHistoryManager.formatRelativeTime(conv.lastModified),
+          messageCount: conv.messageCount
+        }))
+      });
       break;
   }
 }
@@ -274,7 +357,7 @@ function getWebviewContent(
 </head>
 <body>
     <div class="title">LocalSeek</div>
-    <div class="tagline">Seek your answers <i>💯LOCALLY</i> within VSCode </div>
+    <div class="tagline">Seek your answers <i>💯% LOCALLY</i> within VSCode </div>
     
     <div class="error-card">
         <div class="error-icon">⚠️</div>
@@ -313,6 +396,8 @@ function getWebviewContent(
                 --primary: rgba(99, 102, 241, 0.9);
                 --surface: rgba(17, 24, 39, 0.95);
                 --border: rgba(255, 255, 255, 0.1);
+                --success: rgba(16, 185, 129, 0.9);
+                --danger: rgba(239, 68, 68, 0.9);
             }
 
             body {
@@ -329,6 +414,7 @@ function getWebviewContent(
                 justify-content: center;
                 align-items: center;
             }
+
             .header {
                 width: 100%;
                 text-align: center;
@@ -336,50 +422,6 @@ function getWebviewContent(
                 top: 1rem;
                 left: 50%;
                 transform: translateX(-50%);
-            }
-
-            .copy-button {
-                position: absolute;
-                top: 0.5rem;
-                right: 0.5rem;
-                padding: 0.25rem 0.5rem;
-                background: rgba(99, 102, 241, 0.9);
-                border: none;
-                border-radius: 0.375rem;
-                color: white;
-                font-size: 0.75rem;
-                cursor: pointer;
-                opacity: 0.8;
-                transition: opacity 0.2s ease;
-            }
-
-            .copy-button:hover {
-                opacity: 1;
-            }
-
-            .code-block-wrapper {
-                position: relative;
-                margin: 1rem 0;
-            }
-
-            footer {
-                width: 100%;
-                text-align: center;
-                bottom: 0.3px;
-                left: 50%;
-                transform: translateX(-50%);
-                position: fixed;
-                color: rgba(255, 255, 255, 0.5);
-                
-                font-size: 0.875rem;
-            }
-
-            footer a {
-                color: rgb(255, 0, 0);
-            }
-
-            .chat-container {
-                margin-top: 6rem; /* Push chatbox down */
             }
 
             .title {
@@ -404,26 +446,10 @@ function getWebviewContent(
                 margin-bottom: 1.5rem;
             }
 
-            pre code {
-                display: block;
-                overflow-x: auto;
-                padding: 1em;
-                background: rgb(255, 255, 255) !important;
-                border-radius: 0.5rem;
-                margin: 0.5rem 0;
-            }
-
-            .code-block-wrapper {
-                position: relative;
-                margin: 1rem 0;
-                background: rgba(255, 255, 255, 0);
-                border-radius: 0.5rem;
-            }
-
             .chat-container {
                 width: 100%;
                 max-width: 800px;
-                height: 90vh;
+                height: 75vh;
                 background: var(--surface);
                 border-radius: 1.5rem;
                 border: 1px solid var(--border);
@@ -432,52 +458,73 @@ function getWebviewContent(
                 display: flex;
                 flex-direction: column;
                 overflow: hidden;
+                position: relative;
+                margin-top: 2rem;
             }
 
-            .message.user {
-              animation: messageSlide 0.3s ease-out;
+            .chat-controls {
+                display: flex;
+                align-items: center;
+                gap: 1rem;
+                padding: 1rem;
+                border-bottom: 1px solid var(--border);
+                background: rgba(0, 0, 0, 0.2);
             }
 
-            @keyframes messageSlide {
-              from { transform: translateX(20px); opacity: 0; }
-              to { transform: translateX(0); opacity: 1; }
-            }
-
-            .typing-indicator {
-              display: flex;
-              gap: 0.25rem;
-              padding: 1rem;
-            }
-
-            .dot {
-              width: 8px;
-              height: 8px;
-              border-radius: 50%;
-              background: var(--primary);
-              animation: bounce 1.4s infinite;
-            }
-
-            @keyframes bounce {
-              0%, 80%, 100% { transform: translateY(0); }
-              40% { transform: translateY(-6px); }
+            .model-selector-container {
+                flex: 1;
             }
 
             #modelSelector {
                 font-family: "Inter", "Arial", sans-serif;
-                margin: 1rem;
-                padding: 0.75rem 1rem;
+                padding: 0.5rem 1rem;
                 background: var(--surface);
                 border: 1px solid var(--primary);
-                border-radius: 1rem;
+                border-radius: 0.5rem;
                 color: white;
-                font-style: italic;
-                text-transform: uppercase;
                 font-size: 0.875rem;
                 appearance: none;
                 background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white'%3e%3cpath d='M7 10l5 5 5-5z'/%3e%3c/svg%3e");
                 background-repeat: no-repeat;
                 background-position: right 0.75rem center;
-                background-size: 1.25rem;
+                background-size: 1rem;
+                width: 100%;
+                max-width: 200px;
+            }
+
+            .chat-buttons {
+                display: flex;
+                gap: 0.5rem;
+            }
+
+            .btn {
+                padding: 0.5rem;
+                border: none;
+                border-radius: 0.5rem;
+                font-size: 0.875rem;
+                cursor: pointer;
+                transition: all 0.2s ease;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-weight: 500;
+                width: 32px;
+                height: 32px;
+            }
+
+            .btn-primary {
+                background: var(--primary);
+                color: white;
+            }
+
+            .btn-success {
+                background: var(--success);
+                color: white;
+            }
+
+            .btn:hover {
+                opacity: 0.9;
+                transform: translateY(-1px);
             }
 
             #chatHistory {
@@ -542,7 +589,7 @@ function getWebviewContent(
                 box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
             }
 
-            button {
+            .send-btn {
                 padding: 0.875rem 1.5rem;
                 background: var(--primary);
                 border: none;
@@ -554,26 +601,179 @@ function getWebviewContent(
                 display: flex;
                 align-items: center;
                 gap: 0.5rem;
-                flex-shrink: 0; /* Add this */
+                flex-shrink: 0;
             }
 
-            button:hover {
+            .send-btn:hover {
                 opacity: 0.9;
                 transform: translateY(-1px);
             }
 
-            @keyframes messageEnter {
-                from {
-                    opacity: 0;
-                    transform: translateY(10px);
-                }
-                to {
-                    opacity: 1;
-                    transform: translateY(0);
-                }
+            /* Chat History Modal */
+            .history-modal {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.8);
+                backdrop-filter: blur(4px);
+                display: none;
+                align-items: center;
+                justify-content: center;
+                z-index: 1000;
             }
 
-            /* Scrollbar Styling */
+            .history-modal.show {
+                display: flex;
+            }
+
+            .history-content {
+                background: var(--surface);
+                border-radius: 1rem;
+                border: 1px solid var(--border);
+                width: 90%;
+                max-width: 600px;
+                max-height: 80vh;
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+            }
+
+            .history-header {
+                padding: 1.5rem;
+                border-bottom: 1px solid var(--border);
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+
+            .history-header h2 {
+                margin: 0;
+                font-size: 1.5rem;
+                color: white;
+            }
+
+            .close-btn {
+                background: none;
+                border: none;
+                color: rgba(255, 255, 255, 0.7);
+                font-size: 1.5rem;
+                cursor: pointer;
+                padding: 0.5rem;
+                border-radius: 0.5rem;
+                transition: all 0.2s ease;
+            }
+
+            .close-btn:hover {
+                background: rgba(255, 255, 255, 0.1);
+                color: white;
+            }
+
+            .history-list {
+                flex: 1;
+                overflow-y: auto;
+                padding: 1rem;
+            }
+
+            .conversation-item {
+                display: flex;
+                justify-content: space-between;
+                align-items: flex-start;
+                padding: 1rem;
+                margin-bottom: 0.5rem;
+                background: rgba(255, 255, 255, 0.05);
+                border-radius: 0.75rem;
+                cursor: pointer;
+                transition: all 0.2s ease;
+                border: 1px solid transparent;
+            }
+
+            .conversation-item:hover {
+                background: rgba(255, 255, 255, 0.1);
+                border-color: var(--primary);
+            }
+
+            .conversation-info {
+                flex: 1;
+            }
+
+            .conversation-title {
+                font-weight: 600;
+                color: white;
+                margin-bottom: 0.5rem;
+                line-height: 1.3;
+            }
+
+            .conversation-meta {
+                display: flex;
+                gap: 1rem;
+                color: rgba(255, 255, 255, 0.6);
+                font-size: 0.875rem;
+            }
+
+            .delete-btn {
+                background: var(--danger);
+                color: white;
+                border: none;
+                padding: 0.25rem 0.5rem;
+                border-radius: 0.375rem;
+                cursor: pointer;
+                font-size: 0.75rem;
+                opacity: 0.8;
+                transition: opacity 0.2s ease;
+            }
+
+            .delete-btn:hover {
+                opacity: 1;
+            }
+
+            .empty-history {
+                text-align: center;
+                padding: 3rem;
+                color: rgba(255, 255, 255, 0.6);
+            }
+
+            .empty-history h3 {
+                margin: 0 0 1rem 0;
+                color: rgba(255, 255, 255, 0.8);
+            }
+
+            /* Code styling */
+            .copy-button {
+                position: absolute;
+                top: 0.5rem;
+                right: 0.5rem;
+                padding: 0.25rem 0.5rem;
+                background: rgba(99, 102, 241, 0.9);
+                border: none;
+                border-radius: 0.375rem;
+                color: white;
+                font-size: 0.75rem;
+                cursor: pointer;
+                opacity: 0.8;
+                transition: opacity 0.2s ease;
+            }
+
+            .copy-button:hover {
+                opacity: 1;
+            }
+
+            .code-block-wrapper {
+                position: relative;
+                margin: 1rem 0;
+            }
+
+            pre code {
+                display: block;
+                overflow-x: auto;
+                padding: 1em;
+                background: rgb(255, 255, 255) !important;
+                border-radius: 0.5rem;
+                margin: 0.5rem 0;
+            }
+
+            /* Scrollbar styling */
             ::-webkit-scrollbar {
                 width: 8px;
             }
@@ -588,7 +788,39 @@ function getWebviewContent(
                 border-radius: 4px;
             }
 
-            @media (max-width: 600px) {
+            @keyframes messageEnter {
+                from {
+                    opacity: 0;
+                    transform: translateY(10px);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateY(0);
+                }
+            }
+
+            @keyframes gradientMove {
+                0%, 100% { background-position: 0% 50%; }
+                50% { background-position: 100% 50%; }
+            }
+
+            footer {
+                width: 100%;
+                text-align: center;
+                bottom: 0.3px;
+                left: 50%;
+                transform: translateX(-50%);
+                position: fixed;
+                color: rgba(255, 255, 255, 0.5);
+                font-size: 0.875rem;
+            }
+
+            footer a {
+                color: rgb(255, 0, 0);
+                text-decoration: none;
+            }
+
+            @media (max-width: 400px) {
                 .tagline {
                     font-size: 1rem;
                 }
@@ -597,23 +829,39 @@ function getWebviewContent(
                     padding: 0.5rem;
                     gap: 0.5rem;
                 }
+
+                .chat-controls {
+                    flex-direction: column;
+                    gap: 0.5rem;
+                }
+
+                .model-selector-container {
+                    order: 1;
+                }
+
+                .chat-buttons {
+                    order: 2;
+                    justify-content: center;
+                }
             }
 
-            @media (max-width: 400px) {
-                .title {
-                    font-size: 2rem;
+            @media (min-width: 401px) and (max-width: 600px) {
+                .tagline {
+                    font-size: 1rem;
                 }
 
-                button span {
-                    display: none;
+                .input-container {
+                    padding: 1rem;
+                    gap: 0.75rem;
                 }
 
-                button {
-                    padding: 0.875rem;
+                #modelSelector {
+                    max-width: 150px;
+                    font-size: 0.8rem;
                 }
 
-                button svg {
-                    margin-right: 0;
+                .chat-controls {
+                    gap: 0.75rem;
                 }
             }
         </style>
@@ -621,179 +869,297 @@ function getWebviewContent(
     <body>
         <div class="header">
             <div class="title">LocalSeek</div>
-            <div class="tagline">Seek your answers <i>💯LOCALLY</i> within VSCode </div>
+            <div class="tagline">Seek your answers <i>💯% LOCALLY</i> within VSCode</div>
         </div>
+
         <div class="chat-container">
-            <select id="modelSelector">
-                ${models
+            <div class="chat-controls">
+                <div class="model-selector-container">
+                    <select id="modelSelector">
+                        ${models
       .map((model) => `<option value="${model}">${model}</option>`)
       .join("")}
-            </select>
+                    </select>
+                </div>
+                <div class="chat-buttons">
+                    <button class="btn btn-success" onclick="newChat()" title="New Chat">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 5v14M5 12h14"/>
+                        </svg>
+                    </button>
+                    <button class="btn btn-primary" onclick="showChatHistory()" title="Chat History">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 8v4l3 3M22 12c0 5.523-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2s10 4.477 10 10z"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
             
             <div id="chatHistory"></div>
             
             <div class="input-container">
-                                <textarea id="userInput" placeholder="Ask me anything..." rows="1"></textarea>
-                <button onclick="sendMessage()">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
-            </svg>
+                <textarea id="userInput" placeholder="Ask me anything..." rows="1"></textarea>
+                <button class="send-btn" onclick="sendMessage()">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+                    </svg>
                     <span>Send</span>
                 </button>
             </div>
         </div>
-        <footer>
-            <p style="text-align: center; margin-top: 2rem; color: rgba(255, 255, 255, 0.5); font-size: 0.875rem;">
-                Made with ❤️ by <a href="https://www.linkedin.com/in/hariharen9/" target="_blank" style="color: rgba(255, 255, 255, 0.5);">Hariharen</a>
-            </p>
-        </footer>
-        <script>
-    const vscode = acquireVsCodeApi();
-    let currentAssistantMessageElement = null;
-    let isProcessingResponse = false;
 
-    function sendMessage() {
-        if (isProcessingResponse) {
-            vscode.postMessage({
-                command: 'showWarningMessage',
-                text: 'Please wait for current response to complete'
-            });
-            return;
-        }
-
-        const input = document.getElementById('userInput');
-        const modelSelector = document.getElementById('modelSelector');
-        const chatHistory = document.getElementById('chatHistory');
-        const userMessage = input.value;
-        
-        if (!userMessage) return;
-
-        // Add user message
-        chatHistory.innerHTML += \`
-            <div class="message user">
-                \${userMessage}
+        <!-- Chat History Modal -->
+        <div class="history-modal" id="historyModal">
+            <div class="history-content">
+                <div class="history-header">
+                    <h2>Chat History</h2>
+                    <button class="close-btn" onclick="closeChatHistory()">×</button>
+                </div>
+                <div class="history-list" id="historyList">
+                    <div class="empty-history">
+                        <h3>No conversations yet</h3>
+                        <p>Start chatting to see your conversation history here!</p>
+                    </div>
+                </div>
             </div>
-        \`;
+        </div>
 
-        // Send to extension
-        vscode.postMessage({
-            command: 'sendMessage',
-            text: userMessage,
-            model: modelSelector.value
-        });
+        <footer>
+            <p>Made with ❤️ by <a href="https://www.linkedin.com/in/hariharen9/" target="_blank">Hariharen</a></p>
+        </footer>
 
-        input.value = '';
-        chatHistory.scrollTop = chatHistory.scrollHeight;
-        isProcessingResponse = true;
-    }
+        <script>
+            const vscode = acquireVsCodeApi();
+            let currentAssistantMessageElement = null;
+            let isProcessingResponse = false;
 
-    // Original input handler
-    document.getElementById('userInput').addEventListener('keydown', (event) => {
-        if (event.key === 'Enter' && !event.shiftKey) {
-            event.preventDefault();
-            sendMessage();
-        }
-    });
-
-    const userInput = document.getElementById('userInput');
-    userInput.addEventListener('input', () => {
-        userInput.style.height = 'auto';
-        userInput.style.height = (userInput.scrollHeight) + 'px';
-    });
-
-    
-    window.addEventListener('message', async (event) => {
-        const message = event.data;
-        const chatHistory = document.getElementById('chatHistory');
-
-        try {
-            if (message.command === 'appendResponseChunk') {
-                if (!currentAssistantMessageElement) {
-                    currentAssistantMessageElement = document.createElement('div');
-                    currentAssistantMessageElement.className = 'message assistant';
-                    chatHistory.appendChild(currentAssistantMessageElement);
-                    
-                    const tempContent = document.createElement('div');
-                    tempContent.style.whiteSpace = 'pre-wrap';
-                    tempContent.id = 'temp-streaming-raw';
-                    currentAssistantMessageElement.appendChild(tempContent);
-                }
-
-                const tempContent = document.getElementById('temp-streaming-raw');
-                let chunkText = message.text;
-
-
-                tempContent.textContent += chunkText;
-
-                // Auto-scroll only if near bottom
-                const isNearBottom = chatHistory.scrollHeight - chatHistory.clientHeight <= chatHistory.scrollTop + 100;
-                if (isNearBottom) {
-                    chatHistory.scrollTop = chatHistory.scrollHeight;
-                }
-
-                if (message.isComplete) {
-                    // Final processing before Markdown conversion
-                    const finalText = tempContent.textContent
-                    
-                    // Convert to Markdown
-                    const parsedHtml = marked.parse(finalText);
-
-
-                    // Create final content container
-                    const finalContent = document.createElement('div');
-                    finalContent.innerHTML = parsedHtml;
-
-                    // Process code blocks
-                    finalContent.querySelectorAll('pre code').forEach(codeBlock => {
-                        const wrapper = document.createElement('div');
-                        wrapper.className = 'code-block-wrapper';
-                        
-                        const copyButton = document.createElement('button');
-                        copyButton.className = 'copy-button';
-                        copyButton.textContent = 'Copy';
-                        copyButton.onclick = () => copyCodeToClipboard(codeBlock.textContent);
-                        
-                        codeBlock.parentNode.insertBefore(wrapper, codeBlock);
-                        wrapper.appendChild(codeBlock);
-                        wrapper.appendChild(copyButton);
+            function sendMessage() {
+                if (isProcessingResponse) {
+                    vscode.postMessage({
+                        command: 'showWarningMessage',
+                        text: 'Please wait for current response to complete'
                     });
+                    return;
+                }
 
-                    // Replace temporary content
-                    currentAssistantMessageElement.replaceChild(
-                        finalContent,
-                        tempContent
-                    );
+                const input = document.getElementById('userInput');
+                const modelSelector = document.getElementById('modelSelector');
+                const chatHistory = document.getElementById('chatHistory');
+                const userMessage = input.value.trim();
+                
+                if (!userMessage) return;
 
-                    // Apply syntax highlighting
-                    hljs.highlightAll();
+                // Add user message
+                chatHistory.innerHTML += \`
+                    <div class="message user">
+                        \${userMessage}
+                    </div>
+                \`;
 
-                    // Reset state
-                    currentAssistantMessageElement = null;
+                // Send to extension
+                vscode.postMessage({
+                    command: 'sendMessage',
+                    text: userMessage,
+                    model: modelSelector.value
+                });
+
+                input.value = '';
+                chatHistory.scrollTop = chatHistory.scrollHeight;
+                isProcessingResponse = true;
+            }
+
+            function newChat() {
+                vscode.postMessage({
+                    command: 'newChat'
+                });
+            }
+
+            function showChatHistory() {
+                vscode.postMessage({
+                    command: 'getChatHistory'
+                });
+            }
+
+            function closeChatHistory() {
+                document.getElementById('historyModal').classList.remove('show');
+            }
+
+            function loadConversation(conversationId) {
+                vscode.postMessage({
+                    command: 'loadConversation',
+                    conversationId: conversationId
+                });
+                closeChatHistory();
+            }
+
+            function deleteConversation(event, conversationId) {
+                event.stopPropagation();
+                vscode.postMessage({
+                    command: 'deleteConversation',
+                    conversationId: conversationId
+                });
+            }
+
+            // Input handlers
+            document.getElementById('userInput').addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault();
+                    sendMessage();
+                }
+            });
+
+            const userInput = document.getElementById('userInput');
+            userInput.addEventListener('input', () => {
+                userInput.style.height = 'auto';
+                userInput.style.height = (userInput.scrollHeight) + 'px';
+            });
+
+            // Message handling
+            window.addEventListener('message', async (event) => {
+                const message = event.data;
+                const chatHistory = document.getElementById('chatHistory');
+                const historyModal = document.getElementById('historyModal');
+                const historyList = document.getElementById('historyList');
+
+                try {
+                    switch (message.command) {
+                        case 'appendResponseChunk':
+                            if (!currentAssistantMessageElement) {
+                                currentAssistantMessageElement = document.createElement('div');
+                                currentAssistantMessageElement.className = 'message assistant';
+                                chatHistory.appendChild(currentAssistantMessageElement);
+                                
+                                const tempContent = document.createElement('div');
+                                tempContent.style.whiteSpace = 'pre-wrap';
+                                tempContent.id = 'temp-streaming-raw';
+                                currentAssistantMessageElement.appendChild(tempContent);
+                            }
+
+                            const tempContent = document.getElementById('temp-streaming-raw');
+                            tempContent.textContent += message.text;
+
+                            // Auto-scroll
+                            const isNearBottom = chatHistory.scrollHeight - chatHistory.clientHeight <= chatHistory.scrollTop + 100;
+                            if (isNearBottom) {
+                                chatHistory.scrollTop = chatHistory.scrollHeight;
+                            }
+
+                            if (message.isComplete) {
+                                const finalText = tempContent.textContent;
+                                const parsedHtml = marked.parse(finalText);
+                                const finalContent = document.createElement('div');
+                                finalContent.innerHTML = parsedHtml;
+
+                                // Process code blocks
+                                finalContent.querySelectorAll('pre code').forEach(codeBlock => {
+                                    const wrapper = document.createElement('div');
+                                    wrapper.className = 'code-block-wrapper';
+                                    
+                                    const copyButton = document.createElement('button');
+                                    copyButton.className = 'copy-button';
+                                    copyButton.textContent = 'Copy';
+                                    copyButton.onclick = () => copyCodeToClipboard(codeBlock.textContent);
+                                    
+                                    codeBlock.parentNode.insertBefore(wrapper, codeBlock);
+                                    wrapper.appendChild(codeBlock);
+                                    wrapper.appendChild(copyButton);
+                                });
+
+                                currentAssistantMessageElement.replaceChild(finalContent, tempContent);
+                                hljs.highlightAll();
+
+                                currentAssistantMessageElement = null;
+                                isProcessingResponse = false;
+                            }
+                            break;
+
+                        case 'clearChat':
+                            chatHistory.innerHTML = '';
+                            break;
+
+                        case 'chatHistoryList':
+                            if (message.conversations && message.conversations.length > 0) {
+                                historyList.innerHTML = message.conversations.map(conv => \`
+                                    <div class="conversation-item" onclick="loadConversation('\${conv.id}')">
+                                        <div class="conversation-info">
+                                            <div class="conversation-title">\${conv.title}</div>
+                                            <div class="conversation-meta">
+                                                <span>\${conv.lastModified}</span>
+                                                <span>\${conv.messageCount} message\${conv.messageCount !== 1 ? 's' : ''}</span>
+                                            </div>
+                                        </div>
+                                        <button class="delete-btn" onclick="deleteConversation(event, '\${conv.id}')">Delete</button>
+                                    </div>
+                                \`).join('');
+                            } else {
+                                historyList.innerHTML = \`
+                                    <div class="empty-history">
+                                        <h3>No conversations yet</h3>
+                                        <p>Start chatting to see your conversation history here!</p>
+                                    </div>
+                                \`;
+                            }
+                            historyModal.classList.add('show');
+                            break;
+
+                        case 'loadConversationMessages':
+                            chatHistory.innerHTML = '';
+                            message.messages.forEach(msg => {
+                                const messageDiv = document.createElement('div');
+                                messageDiv.className = \`message \${msg.role}\`;
+                                
+                                if (msg.role === 'assistant') {
+                                    messageDiv.innerHTML = marked.parse(msg.content);
+                                    // Process code blocks
+                                    messageDiv.querySelectorAll('pre code').forEach(codeBlock => {
+                                        const wrapper = document.createElement('div');
+                                        wrapper.className = 'code-block-wrapper';
+                                        
+                                        const copyButton = document.createElement('button');
+                                        copyButton.className = 'copy-button';
+                                        copyButton.textContent = 'Copy';
+                                        copyButton.onclick = () => copyCodeToClipboard(codeBlock.textContent);
+                                        
+                                        codeBlock.parentNode.insertBefore(wrapper, codeBlock);
+                                        wrapper.appendChild(codeBlock);
+                                        wrapper.appendChild(copyButton);
+                                    });
+                                    hljs.highlightAll();
+                                } else {
+                                    messageDiv.textContent = msg.content;
+                                }
+                                
+                                chatHistory.appendChild(messageDiv);
+                            });
+                            chatHistory.scrollTop = chatHistory.scrollHeight;
+                            break;
+                    }
+                } catch (error) {
+                    console.error('Error handling message:', error);
                     isProcessingResponse = false;
                 }
-            }
-        } catch (error) {
-            console.error('Error handling message:', error);
-            isProcessingResponse = false;
-        }
-    });
-
-    // Copy function
-    function copyCodeToClipboard(code) {
-        navigator.clipboard.writeText(code).then(() => {
-            vscode.postMessage({
-                command: 'showInformationMessage',
-                text: 'Code copied to clipboard!'
             });
-        });
-    }
-</script>
 
+            function copyCodeToClipboard(code) {
+                navigator.clipboard.writeText(code).then(() => {
+                    vscode.postMessage({
+                        command: 'showInformationMessage',
+                        text: 'Code copied to clipboard!'
+                    });
+                });
+            }
+
+            // Close modal when clicking outside
+            document.getElementById('historyModal').addEventListener('click', (e) => {
+                if (e.target === document.getElementById('historyModal')) {
+                    closeChatHistory();
+                }
+            });
+        </script>
     </body>
     </html>
     `;
 }
-
 
 export function deactivate() {
   // No resources to clean up
