@@ -1,6 +1,7 @@
 # LocalSeek 🤖💬
 
 LocalSeek is a powerful, privacy-first AI chat extension for Visual Studio Code that brings conversational AI directly to your development environment - completely locally.
+[WEBSITE](https://localseek.vercel.app/)
 
 ![LocalSeek Logo](./media/LOCALSEEK.png)
 
