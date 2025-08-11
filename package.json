@@ -43,6 +43,11 @@
           "light": "media/sidebar.svg",
           "dark": "media/sidebar.svg"
         }
+      },
+      {
+        "command": "localseek.sendSelectedCode",
+        "title": "Send to LocalSeek Chat",
+        "category": "LocalSeek"
       }
     ],
     "viewsContainers": {
@@ -77,7 +82,16 @@
     },
     "resources": [
       "media/**"
-    ]
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "localseek.sendSelectedCode",
+          "when": "editorHasSelection",
+          "group": "localseek@1"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",

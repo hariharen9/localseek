@@ -12,6 +12,7 @@ export function activate(context: vscode.ExtensionContext) {
   const chatHistoryManager = new ChatHistoryManager(context);
 
   let currentPanel: vscode.WebviewPanel | undefined;
+  let sidebarWebviewView: vscode.WebviewView | undefined;
 
   // Register command to open chat panel
   context.subscriptions.push(
@@ -28,11 +29,64 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
+  // Register command to send selected code to chat
+  context.subscriptions.push(
+    vscode.commands.registerCommand("localseek.sendSelectedCode", async () => {
+      const editor = vscode.window.activeTextEditor;
+      if (!editor) {
+        vscode.window.showWarningMessage("No active editor found");
+        return;
+      }
+
+      const selection = editor.selection;
+      const selectedText = editor.document.getText(selection);
+      
+      if (!selectedText.trim()) {
+        vscode.window.showWarningMessage("No text selected");
+        return;
+      }
+
+      // Get language ID for syntax highlighting
+      const languageId = editor.document.languageId;
+      const fileName = editor.document.fileName;
+      
+      // Format the selected code with context
+      const formattedCode = `Here's the selected code from \`${fileName}\`:\n\n\`\`\`${languageId}\n${selectedText}\n\`\`\``;
+      
+      // Try to send to sidebar first, then panel
+      const targetWebview = sidebarWebviewView || currentPanel;
+      
+      if (!targetWebview) {
+        // Open sidebar or panel if not available
+        await vscode.commands.executeCommand('localseek-chat.focus');
+        // Give it a moment to initialize
+        setTimeout(() => {
+          if (sidebarWebviewView) {
+            sidebarWebviewView.webview.postMessage({
+              command: 'insertTextAtCursor',
+              text: formattedCode
+            });
+          }
+        }, 500);
+      } else {
+        targetWebview.webview.postMessage({
+          command: 'insertTextAtCursor',
+          text: formattedCode
+        });
+      }
+      
+      vscode.window.showInformationMessage("Selected code sent to LocalSeek Chat");
+    })
+  );
+
   // Register sidebar webview view
+  const chatWebviewProvider = new ChatWebviewViewProvider(context, ollama, chatHistoryManager, (view) => {
+    sidebarWebviewView = view;
+  });
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
       "localseek-chat",
-      new ChatWebviewViewProvider(context, ollama, chatHistoryManager)
+      chatWebviewProvider
     )
   );
 }
@@ -97,7 +151,8 @@ class ChatWebviewViewProvider implements vscode.WebviewViewProvider {
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly ollama: Ollama,
-    private readonly chatHistoryManager: ChatHistoryManager
+    private readonly chatHistoryManager: ChatHistoryManager,
+    private readonly onViewReady: (view: vscode.WebviewView) => void
   ) {}
 
   resolveWebviewView(webviewView: vscode.WebviewView) {
@@ -105,6 +160,9 @@ class ChatWebviewViewProvider implements vscode.WebviewViewProvider {
       enableScripts: true,
       localResourceRoots: [this.context.extensionUri],
     };
+
+    // Notify that the view is ready
+    this.onViewReady(webviewView);
 
     let models: string[] = [];
     this.ollama
@@ -260,6 +318,44 @@ async function handleMessage(
           messageCount: conv.messageCount
         }))
       });
+      break;
+
+    case "insertCodeToEditor":
+      try {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) {
+          vscode.window.showWarningMessage("No active editor found");
+          return;
+        }
+
+        const selection = editor.selection;
+        const codeToInsert = message.code;
+        
+        await editor.edit(editBuilder => {
+          if (selection.isEmpty) {
+            // Insert at cursor position
+            editBuilder.insert(selection.active, codeToInsert);
+          } else {
+            // Replace selected text
+            editBuilder.replace(selection, codeToInsert);
+          }
+        });
+
+        // Position cursor at the end of inserted text
+        const insertedLines = codeToInsert.split('\n');
+        const newLine = selection.active.line + insertedLines.length - 1;
+        const newCharacter = insertedLines.length > 1 
+          ? insertedLines[insertedLines.length - 1].length
+          : selection.active.character + codeToInsert.length;
+        
+        const newPosition = new vscode.Position(newLine, newCharacter);
+        editor.selection = new vscode.Selection(newPosition, newPosition);
+        editor.revealRange(new vscode.Range(newPosition, newPosition));
+        
+        vscode.window.showInformationMessage("Code inserted into editor");
+      } catch (error) {
+        vscode.window.showErrorMessage("Failed to insert code into editor");
+      }
       break;
   }
 }
@@ -740,12 +836,10 @@ function getWebviewContent(
             }
 
             /* Code styling */
-            .copy-button {
+            .copy-button, .insert-button {
                 position: absolute;
                 top: 0.5rem;
-                right: 0.5rem;
                 padding: 0.25rem 0.5rem;
-                background: rgba(99, 102, 241, 0.9);
                 border: none;
                 border-radius: 0.375rem;
                 color: white;
@@ -755,7 +849,17 @@ function getWebviewContent(
                 transition: opacity 0.2s ease;
             }
 
-            .copy-button:hover {
+            .copy-button {
+                right: 0.5rem;
+                background: rgba(99, 102, 241, 0.9);
+            }
+
+            .insert-button {
+                right: 4rem;
+                background: rgba(16, 185, 129, 0.9);
+            }
+
+            .copy-button:hover, .insert-button:hover {
                 opacity: 1;
             }
 
@@ -1060,8 +1164,14 @@ function getWebviewContent(
                                     copyButton.textContent = 'Copy';
                                     copyButton.onclick = () => copyCodeToClipboard(codeBlock.textContent);
                                     
+                                    const insertButton = document.createElement('button');
+                                    insertButton.className = 'insert-button';
+                                    insertButton.textContent = 'Insert';
+                                    insertButton.onclick = () => insertCodeToEditor(codeBlock.textContent);
+                                    
                                     codeBlock.parentNode.insertBefore(wrapper, codeBlock);
                                     wrapper.appendChild(codeBlock);
+                                    wrapper.appendChild(insertButton);
                                     wrapper.appendChild(copyButton);
                                 });
 
@@ -1120,8 +1230,14 @@ function getWebviewContent(
                                         copyButton.textContent = 'Copy';
                                         copyButton.onclick = () => copyCodeToClipboard(codeBlock.textContent);
                                         
+                                        const insertButton = document.createElement('button');
+                                        insertButton.className = 'insert-button';
+                                        insertButton.textContent = 'Insert';
+                                        insertButton.onclick = () => insertCodeToEditor(codeBlock.textContent);
+                                        
                                         codeBlock.parentNode.insertBefore(wrapper, codeBlock);
                                         wrapper.appendChild(codeBlock);
+                                        wrapper.appendChild(insertButton);
                                         wrapper.appendChild(copyButton);
                                     });
                                     hljs.highlightAll();
@@ -1132,6 +1248,28 @@ function getWebviewContent(
                                 chatHistory.appendChild(messageDiv);
                             });
                             chatHistory.scrollTop = chatHistory.scrollHeight;
+                            break;
+
+                        case 'insertTextAtCursor':
+                            const input = document.getElementById('userInput');
+                            const currentValue = input.value;
+                            const cursorPos = input.selectionStart;
+                            const textToInsert = message.text;
+                            
+                            // Insert text at cursor position
+                            const newValue = currentValue.slice(0, cursorPos) + textToInsert + currentValue.slice(input.selectionEnd);
+                            input.value = newValue;
+                            
+                            // Set cursor position after inserted text
+                            input.focus();
+                            input.setSelectionRange(cursorPos + textToInsert.length, cursorPos + textToInsert.length);
+                            
+                            // Update textarea height
+                            input.style.height = 'auto';
+                            input.style.height = (input.scrollHeight) + 'px';
+                            
+                            // Scroll chat into view if needed
+                            input.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                             break;
                     }
                 } catch (error) {
@@ -1146,6 +1284,13 @@ function getWebviewContent(
                         command: 'showInformationMessage',
                         text: 'Code copied to clipboard!'
                     });
+                });
+            }
+
+            function insertCodeToEditor(code) {
+                vscode.postMessage({
+                    command: 'insertCodeToEditor',
+                    code: code
                 });
             }
 
