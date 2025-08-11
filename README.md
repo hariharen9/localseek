@@ -29,8 +29,8 @@ LocalSeek is a powerful, privacy-first AI chat extension for Visual Studio Code 
 
 ### 🌟 AdvancedFeatures
 
-**Chat History**: Automatically saves your conversations for later review and continue where you left off
-**Context Menu Integration**: Right-click on any code snippet and select "Send to LocalSeek Chat" to instantly send it to the chat for context-aware assistance.
+- **Chat History**: Automatically saves your conversations for later review and continue where you left off
+- **Context Menu Integration**: Right-click on any code snippet and select **"Send to LocalSeek Chat"** to instantly send it to the chat for context-aware assistance.
 
 ### 🔒 Local Processing Advantages
 
