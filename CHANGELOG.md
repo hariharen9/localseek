@@ -1,5 +1,10 @@
 # Change Log
 
+## [0.0.5] - 2025-08-11
+
+**Chat History**: Automatically saves your conversations for later review and continue where you left off
+**Context Menu Integration**: Right-click on any code snippet and select "Send to LocalSeek Chat" to instantly send it to the chat for context-aware assistance.
+
 ## [0.0.4] - 2025-02-04
 
 - Fixed a major bug where codeblocks fail to render properly

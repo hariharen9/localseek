@@ -27,6 +27,11 @@ LocalSeek is a powerful, privacy-first AI chat extension for Visual Studio Code 
 - Instant model switching
 - Lightweight and non-intrusive design
 
+### 🌟 AdvancedFeatures
+
+**Chat History**: Automatically saves your conversations for later review and continue where you left off
+**Context Menu Integration**: Right-click on any code snippet and select "Send to LocalSeek Chat" to instantly send it to the chat for context-aware assistance.
+
 ### 🔒 Local Processing Advantages
 
 - **Enhanced Privacy**: Your conversations never leave your computer
@@ -38,7 +43,7 @@ LocalSeek is a powerful, privacy-first AI chat extension for Visual Studio Code 
 
 ### System Requirements
 
-- Visual Studio Code (v1.96.0+)
+- Visual Studio Code
 - [Ollama](https://ollama.com/) installed locally
 - Minimum 8GB RAM recommended
 - At least one Ollama-compatible LLM model (DeepSeek R1 is preffered 😉)
@@ -47,8 +52,8 @@ LocalSeek is a powerful, privacy-first AI chat extension for Visual Studio Code 
 
 ```bash
 # Pull recommended models
-ollama pull deepseek-r1:14b   # The best in my opinion
-ollama pull mistral           # Balanced performance
+ollama pull gpt-oss           # The best in my opinion
+ollama pull deepseek-r1:14b   # Balanced performance
 ollama pull llama3.2          # Versatile model
 ollama pull phi3              # Lightweight option
 ```
