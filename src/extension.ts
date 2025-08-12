@@ -909,6 +909,19 @@ function getWebviewContent(
                 color: rgba(255, 255, 255, 0.8);
             }
 
+            .spinner {
+                border: 2px solid rgba(255, 255, 255, 0.2);
+                border-left-color: var(--primary);
+                border-radius: 50%;
+                width: 1rem;
+                height: 1rem;
+                animation: spin 1s linear infinite;
+            }
+
+            @keyframes spin {
+                to { transform: rotate(360deg); }
+            }
+
             /* Progress bar */
             .progress {
                 width: 100%;
@@ -1177,6 +1190,13 @@ function getWebviewContent(
                     </div>
                 \`;
 
+                // Add loading indicator
+                chatHistory.innerHTML += \`
+                    <div class="message assistant" id="loading-indicator">
+                        <div class="spinner"></div>
+                    </div>
+                \`;
+
                 // Send to extension
                 vscode.postMessage({
                     command: 'sendMessage',
@@ -1329,6 +1349,11 @@ function getWebviewContent(
                 try {
                     switch (message.command) {
                         case 'appendResponseChunk':
+                            const loadingIndicator = document.getElementById('loading-indicator');
+                            if (loadingIndicator) {
+                                loadingIndicator.remove();
+                            }
+
                             if (!currentAssistantMessageElement) {
                                 currentAssistantMessageElement = document.createElement('div');
                                 currentAssistantMessageElement.className = 'message assistant';
