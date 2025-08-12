@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { Ollama } from "ollama";
 import { ChatHistoryManager, ChatMessage, ChatConversation } from "./chatHistory";
+import { KnowledgeBaseManager } from "./rag";
 
 export function activate(context: vscode.ExtensionContext) {
   const config = vscode.workspace.getConfiguration("localseek");
@@ -10,6 +11,9 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Initialize chat history manager
   const chatHistoryManager = new ChatHistoryManager(context);
+  
+  // Initialize RAG knowledge base manager
+  const knowledgeBaseManager = new KnowledgeBaseManager(context);
 
   let currentPanel: vscode.WebviewPanel | undefined;
   let sidebarWebviewView: vscode.WebviewView | undefined;
@@ -23,7 +27,7 @@ export function activate(context: vscode.ExtensionContext) {
       }
 
       currentPanel = createWebviewPanel(context);
-      setupWebview(currentPanel, context, ollama, chatHistoryManager, () => {
+      setupWebview(currentPanel, context, ollama, chatHistoryManager, knowledgeBaseManager, () => {
         currentPanel = undefined;
       });
     })
@@ -79,8 +83,19 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
+  // Register command to index knowledge base
+  context.subscriptions.push(
+    vscode.commands.registerCommand("localseek.indexKnowledgeBase", async () => {
+      try {
+        await knowledgeBaseManager.indexKnowledgeBase();
+      } catch (error) {
+        vscode.window.showErrorMessage(`Failed to index knowledge base: ${error}`);
+      }
+    })
+  );
+
   // Register sidebar webview view
-  const chatWebviewProvider = new ChatWebviewViewProvider(context, ollama, chatHistoryManager, (view) => {
+  const chatWebviewProvider = new ChatWebviewViewProvider(context, ollama, chatHistoryManager, knowledgeBaseManager, (view) => {
     sidebarWebviewView = view;
   });
   context.subscriptions.push(
@@ -118,6 +133,7 @@ async function setupWebview(
   context: vscode.ExtensionContext,
   ollama: Ollama,
   chatHistoryManager: ChatHistoryManager,
+  knowledgeBaseManager: KnowledgeBaseManager,
   onDispose: () => void
 ) {
   let models: string[] = [];
@@ -139,7 +155,7 @@ async function setupWebview(
   panel.webview.onDidReceiveMessage(async (message) => {
     await handleMessage(message, panel, conversationHistory, ollama, chatHistoryManager, currentConversationId, (newId) => {
       currentConversationId = newId;
-    });
+    }, knowledgeBaseManager);
   });
 
   panel.onDidDispose(() => {
@@ -152,6 +168,7 @@ class ChatWebviewViewProvider implements vscode.WebviewViewProvider {
     private readonly context: vscode.ExtensionContext,
     private readonly ollama: Ollama,
     private readonly chatHistoryManager: ChatHistoryManager,
+    private readonly knowledgeBaseManager: KnowledgeBaseManager,
     private readonly onViewReady: (view: vscode.WebviewView) => void
   ) {}
 
@@ -182,7 +199,7 @@ class ChatWebviewViewProvider implements vscode.WebviewViewProvider {
       webviewView.webview.onDidReceiveMessage(async (message) => {
       await handleMessage(message, webviewView, conversationHistory, this.ollama, this.chatHistoryManager, currentConversationId, (newId) => {
         currentConversationId = newId;
-      });
+      }, this.knowledgeBaseManager);
     });
   }
 }
@@ -208,7 +225,8 @@ async function handleMessage(
   ollama: Ollama,
   chatHistoryManager: ChatHistoryManager,
   currentConversationId: string,
-  setConversationId: (id: string) => void
+  setConversationId: (id: string) => void,
+  knowledgeBaseManager?: KnowledgeBaseManager
 ) {
   switch (message.command) {
     case "showInformationMessage":
@@ -232,12 +250,45 @@ async function handleMessage(
         // Save user message to history
         await chatHistoryManager.addMessage(currentConversationId, userMessage);
 
+        // Prepare the messages for the chat API
+        let messagesToSend = conversationHistory.map(msg => ({
+          role: msg.role,
+          content: msg.content
+        }));
+
+        // RAG enhancement: Search knowledge base and augment the latest user message
+        if (knowledgeBaseManager) {
+          try {
+            const searchResults = await knowledgeBaseManager.search(message.text);
+            if (searchResults && searchResults.length > 0) {
+              // Create an augmented version of the user's message with context
+              const context = searchResults.map(result => 
+                `**Source: ${result.metadata.source}**\n${result.content}`
+              ).join('\n\n---\n\n');
+              
+              const augmentedContent = `Context from knowledge base:\n\n${context}\n\n---\n\nUser Query: ${message.text}`;
+              
+              // Replace the last message (user's query) with the augmented version
+              messagesToSend[messagesToSend.length - 1] = {
+                role: "user",
+                content: augmentedContent
+              };
+              
+              // Optionally show a subtle indicator that RAG was used
+              webview.webview.postMessage({
+                command: "showInformationMessage",
+                text: `Enhanced with ${searchResults.length} relevant document${searchResults.length > 1 ? 's' : ''} from knowledge base`
+              });
+            }
+          } catch (error) {
+            console.warn('RAG search failed, continuing without context:', error);
+            // Continue without RAG enhancement - don't break the chat functionality
+          }
+        }
+
         const response = await ollama.chat({
           model: message.model,
-          messages: conversationHistory.map(msg => ({
-            role: msg.role,
-            content: msg.content
-          })),
+          messages: messagesToSend,
           stream: true,
         });
 
@@ -1146,7 +1197,7 @@ function getWebviewContent(
                     <button class="close-btn" onclick="closeModelManager()">×</button>
                 </div>
                 <div style="padding: 1rem; border-bottom: 1px solid var(--border); display: flex; gap: 0.5rem; align-items: center;">
-                    <input id="modelInput" type="text" placeholder="e.g., llama3, mistral, codellama" style="flex:1; padding: 0.5rem 0.75rem; background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 0.5rem; color: white;" />
+                    <input id="modelInput" type="text" placeholder="e.g., gpt-oss, deepseek-r1, qwen3, llama3, mistral..." style="flex:1; padding: 0.5rem 0.75rem; background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 0.5rem; color: white;" />
                     <button class="btn btn-success" style="width:auto; height: auto; padding: 0.5rem 0.75rem;" onclick="startDownload()">Download</button>
                 </div>
                 <div class="history-list" id="modelsList">

@@ -48,6 +48,11 @@
         "command": "localseek.sendSelectedCode",
         "title": "Send to LocalSeek Chat",
         "category": "LocalSeek"
+      },
+      {
+        "command": "localseek.indexKnowledgeBase",
+        "title": "Index Knowledge Base for RAG",
+        "category": "LocalSeek"
       }
     ],
     "viewsContainers": {
@@ -77,6 +82,26 @@
           "type": "string",
           "default": "http://localhost:11434",
           "description": "Ollama API host address"
+        },
+        "localseek.rag.knowledgeBasePath": {
+          "type": "string",
+          "default": "",
+          "description": "The absolute path to the directory containing the knowledge base files."
+        },
+        "localseek.rag.embeddingModel": {
+          "type": "string",
+          "default": "nomic-embed-text",
+          "description": "The name of the Ollama embedding model to use for RAG."
+        },
+        "localseek.rag.chunkSize": {
+          "type": "number",
+          "default": 1024,
+          "description": "The size of the chunks to split the documents into."
+        },
+        "localseek.rag.chunkOverlap": {
+          "type": "number",
+          "default": 200,
+          "description": "The number of characters to overlap between chunks."
         }
       }
     },
