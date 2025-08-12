@@ -16,9 +16,7 @@ interface KnowledgeBase {
 }
 
 export class KnowledgeBaseManager {
-  constructor(private context: vscode.ExtensionContext) {
-    // Simple knowledge base - no complex processing needed
-  }
+  constructor(private context: vscode.ExtensionContext) {}
 
   private getKnowledgeBasePath(): string {
     const config = vscode.workspace.getConfiguration("localseek.rag");
@@ -76,7 +74,6 @@ export class KnowledgeBaseManager {
           const childUri = vscode.Uri.joinPath(currentUri, name);
           
           if (type === vscode.FileType.Directory) {
-            // Skip hidden directories and common ignore patterns
             if (!name.startsWith('.') && name !== 'node_modules' && name !== '__pycache__') {
               await traverse(childUri);
             }
@@ -115,7 +112,6 @@ export class KnowledgeBaseManager {
 
           const knowledgeBaseUri = vscode.Uri.file(knowledgeBasePath);
           
-          // Check if the path exists
           try {
             await vscode.workspace.fs.stat(knowledgeBaseUri);
           } catch {
@@ -133,7 +129,6 @@ export class KnowledgeBaseManager {
 
           let allContent = "";
           
-          // Read all files and combine content
           for (let i = 0; i < files.length; i++) {
             const file = files[i];
             progress.report({ 
@@ -154,7 +149,6 @@ export class KnowledgeBaseManager {
 
           progress.report({ message: "Saving knowledge base..." });
 
-          // Create and save the knowledge base
           const kb: KnowledgeBase = {
             content: allContent.trim(),
             lastUpdated: new Date().toISOString(),
@@ -190,7 +184,6 @@ export class KnowledgeBaseManager {
         return [];
       }
 
-      // Simple search - just return the entire knowledge base content as context
       return [{
         content: kb.content,
         metadata: {
@@ -230,7 +223,6 @@ export class KnowledgeBaseManager {
         return null;
       }
       
-      // Count files by counting "--- filename ---" markers
       const fileCount = (kb.content.match(/--- .+ ---/g) || []).length;
       
       return {

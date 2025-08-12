@@ -9,16 +9,12 @@ export function activate(context: vscode.ExtensionContext) {
     host: config.get("ollamaHost") || "http://localhost:11434",
   });
 
-  // Initialize chat history manager
   const chatHistoryManager = new ChatHistoryManager(context);
-  
-  // Initialize RAG knowledge base manager
   const knowledgeBaseManager = new KnowledgeBaseManager(context);
 
   let currentPanel: vscode.WebviewPanel | undefined;
   let sidebarWebviewView: vscode.WebviewView | undefined;
 
-  // Register command to open chat panel
   context.subscriptions.push(
     vscode.commands.registerCommand("localseek.openChat", async () => {
       if (currentPanel) {
@@ -33,7 +29,6 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
-  // Register command to send selected code to chat
   context.subscriptions.push(
     vscode.commands.registerCommand("localseek.sendSelectedCode", async () => {
       const editor = vscode.window.activeTextEditor;
@@ -50,20 +45,14 @@ export function activate(context: vscode.ExtensionContext) {
         return;
       }
 
-      // Get language ID for syntax highlighting
       const languageId = editor.document.languageId;
       const fileName = editor.document.fileName;
-      
-      // Format the selected code with context
       const formattedCode = `Here's the selected code from \`${fileName}\`:\n\n\`\`\`${languageId}\n${selectedText}\n\`\`\``;
       
-      // Try to send to sidebar first, then panel
       const targetWebview = sidebarWebviewView || currentPanel;
       
       if (!targetWebview) {
-        // Open sidebar or panel if not available
         await vscode.commands.executeCommand('localseek-chat.focus');
-        // Give it a moment to initialize
         setTimeout(() => {
           if (sidebarWebviewView) {
             sidebarWebviewView.webview.postMessage({
@@ -83,7 +72,6 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
-  // Register command to index knowledge base
   context.subscriptions.push(
     vscode.commands.registerCommand("localseek.indexKnowledgeBase", async () => {
       try {
@@ -94,7 +82,6 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
-  // Register sidebar webview view
   const chatWebviewProvider = new ChatWebviewViewProvider(context, ollama, chatHistoryManager, knowledgeBaseManager, (view) => {
     sidebarWebviewView = view;
   });
@@ -259,34 +246,44 @@ async function handleMessage(
         // RAG enhancement: Search knowledge base and augment the latest user message
         if (message.useRAG && knowledgeBaseManager) {
           try {
-            const isIndexed = await knowledgeBaseManager.isKnowledgeBaseIndexed();
-            if (!isIndexed) {
-              // Let the user know they need to index first if they have the toggle on
+            // Check if knowledge base path is configured
+            const config = vscode.workspace.getConfiguration("localseek");
+            const knowledgeBasePath = config.get("rag.knowledgeBasePath") as string;
+            
+            if (!knowledgeBasePath || knowledgeBasePath.trim() === "") {
               webview.webview.postMessage({
                 command: 'showWarningMessage',
-                text: 'Knowledge base not indexed. Please index your files to use RAG.'
+                text: 'Knowledge base path not configured. Please set "Knowledge Base Path" in settings to use RAG.'
               });
             } else {
-              const searchResults = await knowledgeBaseManager.search(message.text);
-              if (searchResults && searchResults.length > 0) {
-                // Create an augmented version of the user's message with context
-                const context = searchResults.map(result => 
-                  `**Source: ${result.metadata.source}**\n${result.content}`
-                ).join('\n\n---\n\n');
-                
-                const augmentedContent = `Context from knowledge base:\n\n${context}\n\n---\n\nUser Query: ${message.text}`;
-                
-                // Replace the last message (user's query) with the augmented version
-                messagesToSend[messagesToSend.length - 1] = {
-                  role: "user",
-                  content: augmentedContent
-                };
-                
-                // Optionally show a subtle indicator that RAG was used
+              const isIndexed = await knowledgeBaseManager.isKnowledgeBaseIndexed();
+              if (!isIndexed) {
                 webview.webview.postMessage({
-                  command: "showInformationMessage",
-                  text: `Enhanced with context from knowledge base.`
+                  command: 'showWarningMessage',
+                  text: 'Knowledge base not indexed. Please run "LocalSeek: Index Knowledge Base" command first.'
                 });
+              } else {
+                const searchResults = await knowledgeBaseManager.search(message.text);
+                if (searchResults && searchResults.length > 0) {
+                  // Create an augmented version of the user's message with context
+                  const context = searchResults.map(result => 
+                    `**Source: ${result.metadata.source}**\n${result.content}`
+                  ).join('\n\n---\n\n');
+                  
+                  const augmentedContent = `Context from knowledge base:\n\n${context}\n\n---\n\nUser Query: ${message.text}`;
+                  
+                  // Replace the last message (user's query) with the augmented version
+                  messagesToSend[messagesToSend.length - 1] = {
+                    role: "user",
+                    content: augmentedContent
+                  };
+                  
+                  // Optionally show a subtle indicator that RAG was used
+                  webview.webview.postMessage({
+                    command: "showInformationMessage",
+                    text: `Enhanced with context from knowledge base.`
+                  });
+                }
               }
             }
           } catch (error) {
@@ -441,7 +438,6 @@ async function handleMessage(
       }
       break;
 
-    // Model Management: list, download with progress, delete
     case "getModels":
       await postModelsList(webview, ollama);
       break;
@@ -468,7 +464,6 @@ async function handleMessage(
             percent,
           });
         }
-        // After completion, refresh list
         webview.webview.postMessage({ command: "downloadComplete", model: modelName });
         await postModelsList(webview, ollama);
       } catch (err: any) {
@@ -1218,7 +1213,7 @@ function getWebviewContent(
                         <span style="white-space: nowrap;">Use RAG</span>
                     </label>
                     <label class="switch">
-                        <input type="checkbox" id="ragToggle" checked>
+                        <input type="checkbox" id="ragToggle">
                         <span class="slider round"></span>
                     </label>
                 </div>
