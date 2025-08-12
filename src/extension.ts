@@ -257,28 +257,37 @@ async function handleMessage(
         }));
 
         // RAG enhancement: Search knowledge base and augment the latest user message
-        if (knowledgeBaseManager) {
+        if (message.useRAG && knowledgeBaseManager) {
           try {
-            const searchResults = await knowledgeBaseManager.search(message.text);
-            if (searchResults && searchResults.length > 0) {
-              // Create an augmented version of the user's message with context
-              const context = searchResults.map(result => 
-                `**Source: ${result.metadata.source}**\n${result.content}`
-              ).join('\n\n---\n\n');
-              
-              const augmentedContent = `Context from knowledge base:\n\n${context}\n\n---\n\nUser Query: ${message.text}`;
-              
-              // Replace the last message (user's query) with the augmented version
-              messagesToSend[messagesToSend.length - 1] = {
-                role: "user",
-                content: augmentedContent
-              };
-              
-              // Optionally show a subtle indicator that RAG was used
+            const isIndexed = await knowledgeBaseManager.isKnowledgeBaseIndexed();
+            if (!isIndexed) {
+              // Let the user know they need to index first if they have the toggle on
               webview.webview.postMessage({
-                command: "showInformationMessage",
-                text: `Enhanced with ${searchResults.length} relevant document${searchResults.length > 1 ? 's' : ''} from knowledge base`
+                command: 'showWarningMessage',
+                text: 'Knowledge base not indexed. Please index your files to use RAG.'
               });
+            } else {
+              const searchResults = await knowledgeBaseManager.search(message.text);
+              if (searchResults && searchResults.length > 0) {
+                // Create an augmented version of the user's message with context
+                const context = searchResults.map(result => 
+                  `**Source: ${result.metadata.source}**\n${result.content}`
+                ).join('\n\n---\n\n');
+                
+                const augmentedContent = `Context from knowledge base:\n\n${context}\n\n---\n\nUser Query: ${message.text}`;
+                
+                // Replace the last message (user's query) with the augmented version
+                messagesToSend[messagesToSend.length - 1] = {
+                  role: "user",
+                  content: augmentedContent
+                };
+                
+                // Optionally show a subtle indicator that RAG was used
+                webview.webview.postMessage({
+                  command: "showInformationMessage",
+                  text: `Enhanced with context from knowledge base.`
+                });
+              }
             }
           } catch (error) {
             console.warn('RAG search failed, continuing without context:', error);
@@ -989,6 +998,68 @@ function getWebviewContent(
                 transition: width 0.2s ease;
             }
 
+            .rag-toggle-container {
+                display: flex;
+                align-items: center;
+                gap: 0.5rem;
+                margin-left: 1rem;
+            }
+            .rag-label {
+                display: flex;
+                align-items: center;
+                gap: 0.5rem;
+                font-size: 0.875rem;
+                font-weight: 500;
+                color: rgba(255, 255, 255, 0.7);
+                cursor: pointer;
+            }
+            .rag-label:hover {
+                color: white;
+            }
+            .switch {
+                position: relative;
+                display: inline-block;
+                width: 34px;
+                height: 20px;
+            }
+            .switch input { 
+                opacity: 0;
+                width: 0;
+                height: 0;
+            }
+            .slider {
+                position: absolute;
+                cursor: pointer;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background-color: rgba(255, 255, 255, 0.2);
+                transition: .2s;
+            }
+            .slider:before {
+                position: absolute;
+                content: "";
+                height: 14px;
+                width: 14px;
+                left: 3px;
+                bottom: 3px;
+                background-color: white;
+                transition: .2s;
+            }
+            input:checked + .slider {
+                background-color: var(--success);
+            }
+            input:checked + .slider:before {
+                transform: translateX(14px);
+            }
+            .slider.round {
+                border-radius: 20px;
+            }
+            .slider.round:before {
+                border-radius: 50%;
+            }
+
             /* Code styling */
             .copy-button, .insert-button {
                 position: absolute;
@@ -1139,6 +1210,18 @@ function getWebviewContent(
       .join("")}
                     </select>
                 </div>
+                <div class="rag-toggle-container">
+                    <label for="ragToggle" class="rag-label" title="Use the indexed knowledge base as context for your query.">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink: 0;">
+                            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+                        </svg>
+                        <span style="white-space: nowrap;">Use RAG</span>
+                    </label>
+                    <label class="switch">
+                        <input type="checkbox" id="ragToggle" checked>
+                        <span class="slider round"></span>
+                    </label>
+                </div>
                 <div class="chat-buttons">
                     <button class="btn btn-success" onclick="newChat()" title="New Chat">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1229,6 +1312,7 @@ function getWebviewContent(
 
                 const input = document.getElementById('userInput');
                 const modelSelector = document.getElementById('modelSelector');
+                const ragToggle = document.getElementById('ragToggle');
                 const chatHistory = document.getElementById('chatHistory');
                 const userMessage = input.value.trim();
                 
@@ -1252,7 +1336,8 @@ function getWebviewContent(
                 vscode.postMessage({
                     command: 'sendMessage',
                     text: userMessage,
-                    model: modelSelector.value
+                    model: modelSelector.value,
+                    useRAG: ragToggle.checked
                 });
 
                 input.value = '';
