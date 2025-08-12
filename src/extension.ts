@@ -179,11 +179,25 @@ class ChatWebviewViewProvider implements vscode.WebviewViewProvider {
     let currentConversationId = this.chatHistoryManager.startNewConversation();
     let conversationHistory: ChatMessage[] = [];
 
-    webviewView.webview.onDidReceiveMessage(async (message) => {
+      webviewView.webview.onDidReceiveMessage(async (message) => {
       await handleMessage(message, webviewView, conversationHistory, this.ollama, this.chatHistoryManager, currentConversationId, (newId) => {
         currentConversationId = newId;
       });
     });
+  }
+}
+
+async function postModelsList(webview: vscode.WebviewPanel | vscode.WebviewView, ollama: Ollama) {
+  try {
+    const response = await ollama.list();
+    const models = (response.models || []).map((m: any) => ({
+      name: m.name,
+      size: m.size, // bytes (may be undefined in some versions)
+      modifiedAt: m.modified_at || m.modifiedAt || undefined,
+    }));
+    webview.webview.postMessage({ command: "modelsList", models });
+  } catch (err) {
+    webview.webview.postMessage({ command: "ollamaError", error: "Failed to fetch models. Is Ollama running?" });
   }
 }
 
@@ -197,6 +211,15 @@ async function handleMessage(
   setConversationId: (id: string) => void
 ) {
   switch (message.command) {
+    case "showInformationMessage":
+      vscode.window.showInformationMessage(message.text || "");
+      break;
+    case "showWarningMessage":
+      vscode.window.showWarningMessage(message.text || "");
+      break;
+    case "showErrorMessage":
+      vscode.window.showErrorMessage(message.text || "");
+      break;
     case "sendMessage":
       try {
         const userMessage: ChatMessage = {
@@ -355,6 +378,57 @@ async function handleMessage(
         vscode.window.showInformationMessage("Code inserted into editor");
       } catch (error) {
         vscode.window.showErrorMessage("Failed to insert code into editor");
+      }
+      break;
+
+    // Model Management: list, download with progress, delete
+    case "getModels":
+      await postModelsList(webview, ollama);
+      break;
+
+    case "downloadModel":
+      try {
+        const modelName = message.model?.trim();
+        if (!modelName) {
+          webview.webview.postMessage({ command: "ollamaError", error: "Please enter a model name." });
+          break;
+        }
+        const stream = await ollama.pull({ model: modelName, stream: true });
+        for await (const part of stream as any) {
+          const total = part.total || part.total_size || 0;
+          const completed = part.completed || part.completed_size || 0;
+          const status = part.status || "downloading";
+          const percent = total > 0 ? Math.floor((completed / total) * 100) : undefined;
+          webview.webview.postMessage({
+            command: "downloadProgress",
+            model: modelName,
+            status,
+            total,
+            completed,
+            percent,
+          });
+        }
+        // After completion, refresh list
+        webview.webview.postMessage({ command: "downloadComplete", model: modelName });
+        await postModelsList(webview, ollama);
+      } catch (err: any) {
+        const msg = err?.message || "Failed to download model";
+        webview.webview.postMessage({ command: "ollamaError", error: msg });
+      }
+      break;
+
+    case "deleteModel":
+      try {
+        const modelName = message.model?.trim();
+        if (!modelName) {
+          webview.webview.postMessage({ command: "ollamaError", error: "No model specified." });
+          break;
+        }
+        await ollama.delete({ model: modelName });
+        await postModelsList(webview, ollama);
+      } catch (err: any) {
+        const msg = err?.message || "Failed to delete model";
+        webview.webview.postMessage({ command: "ollamaError", error: msg });
       }
       break;
   }
@@ -835,6 +909,22 @@ function getWebviewContent(
                 color: rgba(255, 255, 255, 0.8);
             }
 
+            /* Progress bar */
+            .progress {
+                width: 100%;
+                background: rgba(255,255,255,0.08);
+                border: 1px solid var(--border);
+                border-radius: 0.5rem;
+                height: 10px;
+                overflow: hidden;
+            }
+            .progress-bar {
+                height: 100%;
+                background: var(--primary);
+                width: 0%;
+                transition: width 0.2s ease;
+            }
+
             /* Code styling */
             .copy-button, .insert-button {
                 position: absolute;
@@ -996,6 +1086,13 @@ function getWebviewContent(
                             <path d="M12 8v4l3 3M22 12c0 5.523-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2s10 4.477 10 10z"/>
                         </svg>
                     </button>
+                    <button class="btn btn-primary" onclick="showModelManager()" title="Manage Models">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M3 7l9-5 9 5-9 5-9-5z"/>
+                            <path d="M3 17l9 5 9-5"/>
+                            <path d="M3 12l9 5 9-5"/>
+                        </svg>
+                    </button>
                 </div>
             </div>
             
@@ -1023,6 +1120,26 @@ function getWebviewContent(
                     <div class="empty-history">
                         <h3>No conversations yet</h3>
                         <p>Start chatting to see your conversation history here!</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Model Management Modal -->
+        <div class="history-modal" id="modelsModal">
+            <div class="history-content">
+                <div class="history-header">
+                    <h2>Model Management</h2>
+                    <button class="close-btn" onclick="closeModelManager()">×</button>
+                </div>
+                <div style="padding: 1rem; border-bottom: 1px solid var(--border); display: flex; gap: 0.5rem; align-items: center;">
+                    <input id="modelInput" type="text" placeholder="e.g., llama3, mistral, codellama" style="flex:1; padding: 0.5rem 0.75rem; background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 0.5rem; color: white;" />
+                    <button class="btn btn-success" style="width:auto; height: auto; padding: 0.5rem 0.75rem;" onclick="startDownload()">Download</button>
+                </div>
+                <div class="history-list" id="modelsList">
+                    <div class="empty-history">
+                        <h3>No models found</h3>
+                        <p>Connect to Ollama or download a model to get started.</p>
                     </div>
                 </div>
             </div>
@@ -1084,6 +1201,15 @@ function getWebviewContent(
                 });
             }
 
+            function showModelManager() {
+                vscode.postMessage({ command: 'getModels' });
+                document.getElementById('modelsModal').classList.add('show');
+            }
+
+            function closeModelManager() {
+                document.getElementById('modelsModal').classList.remove('show');
+            }
+
             function closeChatHistory() {
                 document.getElementById('historyModal').classList.remove('show');
             }
@@ -1117,6 +1243,81 @@ function getWebviewContent(
                 userInput.style.height = 'auto';
                 userInput.style.height = (userInput.scrollHeight) + 'px';
             });
+
+            function formatBytes(bytes) {
+                if (!bytes && bytes !== 0) return '—';
+                const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+                if (bytes === 0) return '0 B';
+                const i = Math.floor(Math.log(bytes) / Math.log(1024));
+                return (bytes / Math.pow(1024, i)).toFixed(2) + ' ' + sizes[i];
+            }
+
+            function renderModels(models) {
+                const list = document.getElementById('modelsList');
+                if (!models || models.length === 0) {
+                    list.innerHTML = \`
+                        \u003cdiv class="empty-history"\u003e
+                            \u003ch3\u003eNo models found\u003c/h3\u003e
+                            \u003cp\u003eConnect to Ollama or download a model to get started.\u003c/p\u003e
+                        \u003c/div\u003e\`;
+                    updateModelSelector([]);
+                    return;
+                }
+                list.innerHTML = models.map(m => {
+                    const dateStr = m.modifiedAt ? new Date(m.modifiedAt).toLocaleString() : '—';
+                    const sizeStr = formatBytes(m.size);
+                    return \`
+                        \u003cdiv class="conversation-item"\u003e
+                            \u003cdiv class="conversation-info"\u003e
+                                \u003cdiv class="conversation-title"\u003e\${m.name}\u003c/div\u003e
+                                \u003cdiv class="conversation-meta"\u003e
+                                    \u003cspan\u003eSize: \${sizeStr}\u003c/span\u003e
+                                    \u003cspan\u003eModified: \${dateStr}\u003c/span\u003e
+                                \u003c/div\u003e
+                                \u003cdiv class="progress" id="progress-\${CSS.escape(m.name)}" style="display:none; margin-top: 0.5rem;"\u003e
+                                    \u003cdiv class="progress-bar" id="progress-bar-\${CSS.escape(m.name)}"\u003e\u003c/div\u003e
+                                \u003c/div\u003e
+                                \u003cdiv id="progress-status-\${CSS.escape(m.name)}" style="font-size: 0.8rem; color: rgba(255,255,255,0.7); margin-top: 0.25rem;"\u003e\u003c/div\u003e
+                            \u003c/div\u003e
+                            \u003cbutton class="delete-btn" onclick="removeModel('\${m.name.replace(/'/g, "\\\'")}')"\u003eRemove\u003c/button\u003e
+                        \u003c/div\u003e\`;
+                }).join('');
+                // Update model selector options
+                updateModelSelector(models.map(m => m.name));
+            }
+
+            function updateModelSelector(modelNames) {
+                const selector = document.getElementById('modelSelector');
+                if (!selector) return;
+                selector.innerHTML = (modelNames || []).map(name => \`\u003coption value="\${name}"\u003e\${name}\u003c/option\u003e\`).join('');
+            }
+
+            function startDownload() {
+                const input = document.getElementById('modelInput');
+                const name = input.value.trim();
+                if (!name) return;
+                vscode.postMessage({ command: 'downloadModel', model: name });
+                // Show a progress row even if not in the list yet
+                const list = document.getElementById('modelsList');
+                const idSafe = name.replace(/[^a-zA-Z0-9_.:-]/g, '_');
+                const existing = document.getElementById('progress-' + idSafe);
+                if (!existing) {
+                    list.innerHTML = \`
+                        \u003cdiv class="conversation-item"\u003e
+                            \u003cdiv class="conversation-info"\u003e
+                                \u003cdiv class="conversation-title"\u003e\${name}\u003c/div\u003e
+                                \u003cdiv class="progress" id="progress-\${idSafe}" style="display:block; margin-top: 0.5rem;"\u003e
+                                    \u003cdiv class="progress-bar" id="progress-bar-\${idSafe}"\u003e\u003c/div\u003e
+                                \u003c/div\u003e
+                                \u003cdiv id="progress-status-\${idSafe}" style="font-size: 0.8rem; color: rgba(255,255,255,0.7); margin-top: 0.25rem;"\u003eStarting download…\u003c/div\u003e
+                            \u003c/div\u003e
+                        \u003c/div\u003e\` + list.innerHTML;
+                }
+            }
+
+            function removeModel(name) {
+                vscode.postMessage({ command: 'deleteModel', model: name });
+            }
 
             // Message handling
             window.addEventListener('message', async (event) => {
@@ -1271,6 +1472,37 @@ function getWebviewContent(
                             // Scroll chat into view if needed
                             input.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                             break;
+
+                        case 'modelsList':
+                            renderModels(message.models || []);
+                            break;
+
+                        case 'downloadProgress': {
+                            const name = message.model;
+                            const idSafe = name.replace(/[^a-zA-Z0-9_.:-]/g, '_');
+                            const bar = document.getElementById('progress-bar-' + idSafe);
+                            const wrap = document.getElementById('progress-' + idSafe);
+                            const statusEl = document.getElementById('progress-status-' + idSafe);
+                            if (wrap) wrap.style.display = 'block';
+                            if (bar && typeof message.percent === 'number') {
+                                bar.style.width = message.percent + '%';
+                            }
+                            if (statusEl) {
+                                const totalStr = typeof message.total === 'number' ? \` of \${formatBytes(message.total)}\` : '';
+                                const compStr = typeof message.completed === 'number' ? \`\${formatBytes(message.completed)}\` : '';
+                                const pctStr = typeof message.percent === 'number' ? \` (\${message.percent}%)\` : '';
+                                statusEl.textContent = \`\${message.status || 'downloading'}: \${compStr}\${totalStr}\${pctStr}\`;
+                            }
+                            break;
+                        }
+
+                        case 'downloadComplete':
+                            // No-op here; modelsList will follow and refresh UI
+                            break;
+
+                        case 'ollamaError':
+                            vscode.postMessage({ command: 'showErrorMessage', text: message.error });
+                            break;
                     }
                 } catch (error) {
                     console.error('Error handling message:', error);
@@ -1300,6 +1532,14 @@ function getWebviewContent(
                     closeChatHistory();
                 }
             });
+            document.getElementById('modelsModal').addEventListener('click', (e) => {
+                if (e.target === document.getElementById('modelsModal')) {
+                    closeModelManager();
+                }
+            });
+
+            // Fetch models initially to populate selector
+            vscode.postMessage({ command: 'getModels' });
         </script>
     </body>
     </html>
