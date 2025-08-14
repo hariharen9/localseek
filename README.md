@@ -250,7 +250,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**Developed with ❤️ by [Hariharen](https://www.linkedin.com/in/hariharen9/)**
+**Developed with ❤️ by [HariHaren](https://www.hariharen9.site)**
 ---
 
 *LocalSeek - Your local AI companion for VSCode. Seek your answers, locally and privately.* 🔍✨

@@ -575,8 +575,18 @@ function getWebviewContent(
         }
 
         footer a {
-            color: rgb(255, 0, 0);
+            display: inline-block;
             text-decoration: none;
+            background: linear-gradient(270deg, #6366f1, #10b981, #6366f1);
+            background-size: 200% 200%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: gradientMove 5s ease infinite;
+        }
+
+        @keyframes gradientMove {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
         }
     </style>
 </head>
@@ -591,7 +601,7 @@ function getWebviewContent(
     </div>
     
     <footer>
-        <p>Made with ❤️ by <a href="https://www.linkedin.com/in/hariharen9/" target="_blank">Hariharen</a></p>
+        <p>Made with ❤️ by <a href="https://www.hariharen9.site" target="_blank">HariHaren</a></p>
     </footer>
 </body>
 </html>`;
@@ -1140,8 +1150,13 @@ function getWebviewContent(
             }
 
             footer a {
-                color: rgb(255, 0, 0);
+                display: inline-block;
                 text-decoration: none;
+                background: linear-gradient(270deg, #6366f1, #10b981, #6366f1);
+                background-size: 200% 200%;
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+                animation: gradientMove 5s ease infinite;
             }
 
             @media (max-width: 400px) {
@@ -1288,7 +1303,7 @@ function getWebviewContent(
         </div>
 
         <footer>
-            <p>Made with ❤️ by <a href="https://www.linkedin.com/in/hariharen9/" target="_blank">Hariharen</a></p>
+            <p>Made with ❤️ by <a href="https://www.hariharen9.site" target="_blank">HariHaren</a></p>
         </footer>
 
         <script>
@@ -1512,28 +1527,29 @@ function getWebviewContent(
                                 finalContent.innerHTML = parsedHtml;
 
                                 // Process code blocks
-                                finalContent.querySelectorAll('pre code').forEach(codeBlock => {
-                                    const wrapper = document.createElement('div');
-                                    wrapper.className = 'code-block-wrapper';
-                                    
-                                    const copyButton = document.createElement('button');
-                                    copyButton.className = 'copy-button';
-                                    copyButton.textContent = 'Copy';
-                                    copyButton.onclick = () => copyCodeToClipboard(codeBlock.textContent);
-                                    
-                                    const insertButton = document.createElement('button');
-                                    insertButton.className = 'insert-button';
-                                    insertButton.textContent = 'Insert';
-                                    insertButton.onclick = () => insertCodeToEditor(codeBlock.textContent);
-                                    
-                                    codeBlock.parentNode.insertBefore(wrapper, codeBlock);
-                                    wrapper.appendChild(codeBlock);
-                                    wrapper.appendChild(insertButton);
-                                    wrapper.appendChild(copyButton);
-                                });
+                                    finalContent.querySelectorAll('pre code').forEach(codeBlock => {
+                                        const wrapper = document.createElement('div');
+                                        wrapper.className = 'code-block-wrapper';
+                                        
+                                        const copyButton = document.createElement('button');
+                                        copyButton.className = 'copy-button';
+                                        copyButton.textContent = 'Copy';
+                                        copyButton.onclick = () => copyCodeToClipboard(codeBlock.textContent);
+                                        
+                                        const insertButton = document.createElement('button');
+                                        insertButton.className = 'insert-button';
+                                        insertButton.textContent = 'Insert';
+                                        insertButton.onclick = () => insertCodeToEditor(codeBlock.textContent);
+                                        
+                                        codeBlock.parentNode.insertBefore(wrapper, codeBlock);
+                                        wrapper.appendChild(codeBlock);
+                                        wrapper.appendChild(insertButton);
+                                        wrapper.appendChild(copyButton);
+
+                                        hljs.highlightElement(codeBlock);
+                                    });
 
                                 currentAssistantMessageElement.replaceChild(finalContent, tempContent);
-                                hljs.highlightAll();
 
                                 currentAssistantMessageElement = null;
                                 isProcessingResponse = false;
@@ -1596,8 +1612,9 @@ function getWebviewContent(
                                         wrapper.appendChild(codeBlock);
                                         wrapper.appendChild(insertButton);
                                         wrapper.appendChild(copyButton);
+
+                                        hljs.highlightElement(codeBlock);
                                     });
-                                    hljs.highlightAll();
                                 } else {
                                     messageDiv.textContent = msg.content;
                                 }
