@@ -601,7 +601,7 @@ function getWebviewContent(
     </div>
     
     <footer>
-        <p>Made with ❤️ by <a href="https://www.hariharen9.site" target="_blank">HariHaren</a></p>
+        <p>Made with ❤️ by <a href="https://www.hariharen.site" target="_blank">HariHaren</a></p>
     </footer>
 </body>
 </html>`;
@@ -1303,7 +1303,7 @@ function getWebviewContent(
         </div>
 
         <footer>
-            <p>Made with ❤️ by <a href="https://www.hariharen9.site" target="_blank">HariHaren</a></p>
+            <p>Made with ❤️ by <a href="https://www.hariharen.site" target="_blank">HariHaren</a></p>
         </footer>
 
         <script>
