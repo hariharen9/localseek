@@ -370,13 +370,22 @@ window.addEventListener('message', async (event) => {
                     chatHistory.appendChild(currentAssistantMessageElement);
                     
                     const tempContent = document.createElement('div');
-                    tempContent.style.whiteSpace = 'pre-wrap';
                     tempContent.id = 'temp-streaming-raw';
+                    // Store the raw text on the dataset so we don't lose markdown characters
+                    tempContent.dataset.rawText = '';
                     currentAssistantMessageElement.appendChild(tempContent);
                 }
 
                 const tempContent = document.getElementById('temp-streaming-raw');
-                tempContent.textContent += message.text;
+                tempContent.dataset.rawText += message.text;
+                
+                // Parse markdown live while streaming
+                tempContent.innerHTML = marked.parse(tempContent.dataset.rawText);
+                
+                // Highlight code blocks quickly without full wrapper UI during stream to save performance
+                tempContent.querySelectorAll('pre code').forEach(codeBlock => {
+                    hljs.highlightElement(codeBlock);
+                });
 
                 // Auto-scroll
                 const isNearBottom = chatHistory.scrollHeight - chatHistory.clientHeight <= chatHistory.scrollTop + 100;
@@ -385,33 +394,13 @@ window.addEventListener('message', async (event) => {
                 }
 
                 if (message.isComplete) {
-                    const finalText = tempContent.textContent;
+                    const finalText = tempContent.dataset.rawText;
                     const parsedHtml = marked.parse(finalText);
                     const finalContent = document.createElement('div');
                     finalContent.innerHTML = parsedHtml;
 
                     // Process code blocks
-                        finalContent.querySelectorAll('pre code').forEach(codeBlock => {
-                            const wrapper = document.createElement('div');
-                            wrapper.className = 'code-block-wrapper';
-                            
-                            const copyButton = document.createElement('button');
-                            copyButton.className = 'copy-button';
-                            copyButton.textContent = 'Copy';
-                            copyButton.onclick = () => copyCodeToClipboard(codeBlock.textContent);
-                            
-                            const insertButton = document.createElement('button');
-                            insertButton.className = 'insert-button';
-                            insertButton.textContent = 'Insert';
-                            insertButton.onclick = () => insertCodeToEditor(codeBlock.textContent);
-                            
-                            codeBlock.parentNode.insertBefore(wrapper, codeBlock);
-                            wrapper.appendChild(codeBlock);
-                            wrapper.appendChild(insertButton);
-                            wrapper.appendChild(copyButton);
-
-                            hljs.highlightElement(codeBlock);
-                        });
+                    processCodeBlocks(finalContent);
 
                     currentAssistantMessageElement.replaceChild(finalContent, tempContent);
 
@@ -423,6 +412,7 @@ window.addEventListener('message', async (event) => {
 
             case 'clearChat':
                 chatHistory.innerHTML = '';
+                currentAssistantMessageElement = null;
                 break;
 
             case 'chatHistoryList':
@@ -452,6 +442,7 @@ window.addEventListener('message', async (event) => {
 
             case 'loadConversationMessages':
                 chatHistory.innerHTML = '';
+                currentAssistantMessageElement = null;
                 message.messages.forEach(msg => {
                     const messageDiv = document.createElement('div');
                     messageDiv.className = `message ${msg.role}`;
@@ -459,27 +450,7 @@ window.addEventListener('message', async (event) => {
                     if (msg.role === 'assistant') {
                         messageDiv.innerHTML = marked.parse(msg.content);
                         // Process code blocks
-                        messageDiv.querySelectorAll('pre code').forEach(codeBlock => {
-                            const wrapper = document.createElement('div');
-                            wrapper.className = 'code-block-wrapper';
-                            
-                            const copyButton = document.createElement('button');
-                            copyButton.className = 'copy-button';
-                            copyButton.textContent = 'Copy';
-                            copyButton.onclick = () => copyCodeToClipboard(codeBlock.textContent);
-                            
-                            const insertButton = document.createElement('button');
-                            insertButton.className = 'insert-button';
-                            insertButton.textContent = 'Insert';
-                            insertButton.onclick = () => insertCodeToEditor(codeBlock.textContent);
-                            
-                            codeBlock.parentNode.insertBefore(wrapper, codeBlock);
-                            wrapper.appendChild(codeBlock);
-                            wrapper.appendChild(insertButton);
-                            wrapper.appendChild(copyButton);
-
-                            hljs.highlightElement(codeBlock);
-                        });
+                        processCodeBlocks(messageDiv);
                     } else {
                         // Extract attached files from the raw content if they exist
                         let displayContent = msg.content;
@@ -612,3 +583,59 @@ document.getElementById('modelsModal').addEventListener('click', (e) => {
 vscode.postMessage({ command: 'getModels' });
 // Fetch workspace files for @ mentions
 vscode.postMessage({ command: 'getWorkspaceFiles' });
+
+function processCodeBlocks(element) {
+    element.querySelectorAll("pre code").forEach(codeBlock => {
+        // Find language
+        let language = "plaintext";
+        const classList = Array.from(codeBlock.classList);
+        const langClass = classList.find(c => c.startsWith("language-"));
+        if (langClass) {
+            language = langClass.replace("language-", "");
+        }
+
+        const wrapper = document.createElement("div");
+        wrapper.className = "code-block-wrapper";
+        
+        // Create header
+        const header = document.createElement("div");
+        header.className = "code-block-header";
+        
+        const langSpan = document.createElement("span");
+        langSpan.textContent = language;
+        
+        const actionsDiv = document.createElement("div");
+        actionsDiv.className = "code-block-actions";
+        
+        const insertButton = document.createElement("button");
+        insertButton.className = "code-action-btn";
+        insertButton.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg> Insert`;
+        insertButton.onclick = () => insertCodeToEditor(codeBlock.textContent);
+        
+        const copyButton = document.createElement("button");
+        copyButton.className = "code-action-btn";
+        copyButton.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg> Copy`;
+        copyButton.onclick = (e) => {
+            copyCodeToClipboard(codeBlock.textContent);
+            const originalHtml = e.currentTarget.innerHTML;
+            e.currentTarget.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg> Copied!`;
+            setTimeout(() => {
+                e.currentTarget.innerHTML = originalHtml;
+            }, 2000);
+        };
+        
+        actionsDiv.appendChild(insertButton);
+        actionsDiv.appendChild(copyButton);
+        
+        header.appendChild(langSpan);
+        header.appendChild(actionsDiv);
+        
+        const pre = codeBlock.parentNode;
+        pre.parentNode.insertBefore(wrapper, pre);
+        wrapper.appendChild(header);
+        wrapper.appendChild(pre);
+
+        hljs.highlightElement(codeBlock);
+    });
+}
+

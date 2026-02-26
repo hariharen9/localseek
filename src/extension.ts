@@ -386,6 +386,11 @@ async function handleMessage(
         });
       } catch (error) {
         vscode.window.showErrorMessage("Error generating response");
+        webview.webview.postMessage({
+          command: "appendResponseChunk",
+          text: "Error generating response. Please check your Ollama connection.",
+          isComplete: true,
+        });
       }
       break;
 
