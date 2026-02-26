@@ -44,6 +44,31 @@ function sendMessage() {
     input.value = '';
     chatHistory.scrollTop = chatHistory.scrollHeight;
     isProcessingResponse = true;
+    toggleSendButton(true);
+}
+
+function toggleSendButton(isGenerating) {
+    const btn = document.getElementById('sendButton');
+    const icon = document.getElementById('sendIcon');
+    const text = document.getElementById('sendBtnText');
+    
+    if (isGenerating) {
+        btn.style.backgroundColor = 'var(--danger)';
+        text.textContent = 'Stop';
+        icon.innerHTML = '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>';
+        btn.onclick = stopGeneration;
+    } else {
+        btn.style.backgroundColor = 'var(--primary)';
+        text.textContent = 'Send';
+        icon.innerHTML = '<path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>';
+        btn.onclick = sendMessage;
+    }
+}
+
+function stopGeneration() {
+    vscode.postMessage({ command: 'stopGeneration' });
+    isProcessingResponse = false;
+    toggleSendButton(false);
 }
 
 function newChat() {
@@ -244,6 +269,7 @@ window.addEventListener('message', async (event) => {
 
                     currentAssistantMessageElement = null;
                     isProcessingResponse = false;
+                    toggleSendButton(false);
                 }
                 break;
 

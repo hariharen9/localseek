@@ -227,6 +227,10 @@ async function handleMessage(
     case "showErrorMessage":
       vscode.window.showErrorMessage(message.text || "");
       break;
+    case "stopGeneration":
+      ollama.abort();
+      break;
+
     case "sendMessage":
       try {
         const userMessage: ChatMessage = {
@@ -302,20 +306,28 @@ async function handleMessage(
 
         let fullResponse = "";
         let buffer = "";
-        for await (const part of response) {
-          if (part.message.content) {
-            const chunk = part.message.content;
-            fullResponse += chunk;
-            buffer += chunk;
+        try {
+          for await (const part of response) {
+            if (part.message.content) {
+              const chunk = part.message.content;
+              fullResponse += chunk;
+              buffer += chunk;
 
-            if (buffer.length > 50 || chunk.includes('\n')) {
-              webview.webview.postMessage({
-                command: "appendResponseChunk",
-                text: buffer,
-                isComplete: false,
-              });
-              buffer = "";
+              if (buffer.length > 50 || chunk.includes('\n')) {
+                webview.webview.postMessage({
+                  command: "appendResponseChunk",
+                  text: buffer,
+                  isComplete: false,
+                });
+                buffer = "";
+              }
             }
+          }
+        } catch (err: any) {
+          if (err.name === 'AbortError') {
+            console.log("Generation aborted by user");
+          } else {
+            throw err;
           }
         }
 
