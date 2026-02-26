@@ -1,6 +1,104 @@
 const vscode = acquireVsCodeApi();
 let currentAssistantMessageElement = null;
 let isProcessingResponse = false;
+let workspaceFiles = [];
+let attachedFiles = [];
+let mentionIndex = -1;
+let currentMentionFilter = '';
+let mentionSelectedIndex = 0;
+
+function renderAttachedFiles() {
+    const container = document.getElementById('file-pills');
+    container.innerHTML = attachedFiles.map((file, i) => `
+        <div class="file-pill">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+                <polyline points="13 2 13 9 20 9"></polyline>
+            </svg>
+            ${file.name}
+            <span class="file-pill-remove" onclick="removeAttachedFile(${i})">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </span>
+        </div>
+    `).join('');
+}
+
+function removeAttachedFile(index) {
+    attachedFiles.splice(index, 1);
+    renderAttachedFiles();
+}
+
+function selectMention(filePath) {
+    const parts = filePath.split('/');
+    const name = parts.pop();
+    
+    if (!attachedFiles.some(f => f.path === filePath)) {
+        attachedFiles.push({ name, path: filePath });
+        renderAttachedFiles();
+    }
+    
+    const input = document.getElementById('userInput');
+    const value = input.value;
+    const textBeforeMention = value.substring(0, mentionIndex);
+    const textAfterCursor = value.substring(input.selectionStart);
+    
+    input.value = textBeforeMention + textAfterCursor;
+    input.focus();
+    
+    document.getElementById('mention-dropdown').classList.remove('show');
+    mentionIndex = -1;
+    mentionSelectedIndex = 0;
+}
+
+function handleInputForMentions(e) {
+    const value = e.target.value;
+    const cursorPos = e.target.selectionStart;
+    
+    // Check if we are typing a mention
+    const textBeforeCursor = value.substring(0, cursorPos);
+    const mentionMatch = textBeforeCursor.match(/@([a-zA-Z0-9_\-\.\/]*)$/);
+    
+    const dropdown = document.getElementById('mention-dropdown');
+    
+    if (mentionMatch) {
+        currentMentionFilter = mentionMatch[1].toLowerCase();
+        mentionIndex = mentionMatch.index;
+        
+        const filteredFiles = workspaceFiles
+            .filter(f => f.toLowerCase().includes(currentMentionFilter))
+            .slice(0, 10); // Show max 10
+            
+        if (filteredFiles.length > 0) {
+            dropdown.innerHTML = filteredFiles.map((f, i) => {
+                const parts = f.split('/');
+                const name = parts.pop();
+                const path = parts.join('/');
+                return `
+                    <div class="mention-item ${i === mentionSelectedIndex ? 'selected' : ''}" onclick="selectMention('${f.replace(/'/g, "\\'")}')" data-index="${i}">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink: 0;">
+                            <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+                            <polyline points="13 2 13 9 20 9"></polyline>
+                        </svg>
+                        <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${name}</span>
+                        <span class="mention-item-path" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${path}</span>
+                    </div>
+                `;
+            }).join('');
+            dropdown.classList.add('show');
+            
+            // Adjust selection index if out of bounds
+            if (mentionSelectedIndex >= filteredFiles.length) {
+                mentionSelectedIndex = 0;
+            }
+        } else {
+            dropdown.classList.remove('show');
+        }
+    } else {
+        dropdown.classList.remove('show');
+        mentionIndex = -1;
+        mentionSelectedIndex = 0;
+    }
+}
 
 function sendMessage() {
     if (isProcessingResponse) {
@@ -19,9 +117,27 @@ function sendMessage() {
     
     if (!userMessage) return;
 
+    let attachedFilesHtml = '';
+    if (attachedFiles.length > 0) {
+        attachedFilesHtml = `
+            <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem;">
+                ${attachedFiles.map(file => `
+                    <div style="background: rgba(0,0,0,0.2); padding: 0.25rem 0.5rem; border-radius: 0.25rem; font-size: 0.75rem; display: flex; align-items: center; gap: 0.25rem; border: 1px solid rgba(255,255,255,0.1);">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+                            <polyline points="13 2 13 9 20 9"></polyline>
+                        </svg>
+                        ${file.name}
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    }
+
     // Add user message
     chatHistory.innerHTML += `
         <div class="message user">
+            ${attachedFilesHtml}
             ${userMessage}
         </div>
     `;
@@ -38,10 +154,13 @@ function sendMessage() {
         command: 'sendMessage',
         text: userMessage,
         model: modelSelector.value,
-        useRAG: ragToggle.checked
+        useRAG: ragToggle.checked,
+        attachedFiles: attachedFiles
     });
 
     input.value = '';
+    attachedFiles = [];
+    renderAttachedFiles();
     chatHistory.scrollTop = chatHistory.scrollHeight;
     isProcessingResponse = true;
     toggleSendButton(true);
@@ -114,6 +233,34 @@ function deleteConversation(event, conversationId) {
 
 // Input handlers
 document.getElementById('userInput').addEventListener('keydown', (event) => {
+    const dropdown = document.getElementById('mention-dropdown');
+    
+    if (dropdown.classList.contains('show')) {
+        const items = dropdown.querySelectorAll('.mention-item');
+        if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            mentionSelectedIndex = (mentionSelectedIndex + 1) % items.length;
+            handleInputForMentions({ target: event.target });
+            return;
+        } else if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            mentionSelectedIndex = (mentionSelectedIndex - 1 + items.length) % items.length;
+            handleInputForMentions({ target: event.target });
+            return;
+        } else if (event.key === 'Enter') {
+            event.preventDefault();
+            const filteredFiles = workspaceFiles.filter(f => f.toLowerCase().includes(currentMentionFilter));
+            if (filteredFiles[mentionSelectedIndex]) {
+                selectMention(filteredFiles[mentionSelectedIndex]);
+            }
+            return;
+        } else if (event.key === 'Escape') {
+            dropdown.classList.remove('show');
+            mentionIndex = -1;
+            return;
+        }
+    }
+
     if (event.key === 'Enter' && !event.shiftKey) {
         event.preventDefault();
         sendMessage();
@@ -121,7 +268,8 @@ document.getElementById('userInput').addEventListener('keydown', (event) => {
 });
 
 const userInput = document.getElementById('userInput');
-userInput.addEventListener('input', () => {
+userInput.addEventListener('input', (e) => {
+    handleInputForMentions(e);
     userInput.style.height = 'auto';
     userInput.style.height = (userInput.scrollHeight) + 'px';
 });
@@ -333,7 +481,35 @@ window.addEventListener('message', async (event) => {
                             hljs.highlightElement(codeBlock);
                         });
                     } else {
-                        messageDiv.textContent = msg.content;
+                        // Extract attached files from the raw content if they exist
+                        let displayContent = msg.content;
+                        if (displayContent.startsWith("Here are the contents of the attached files for context:\n\n")) {
+                            const match = displayContent.match(/--- (.*?) ---/g);
+                            if (match) {
+                                const files = match.map(m => m.replace(/--- /g, '').replace(/ ---/g, '').trim());
+                                const pillsHtml = `
+                                    <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem;">
+                                        ${files.map(name => `
+                                            <div style="background: rgba(0,0,0,0.2); padding: 0.25rem 0.5rem; border-radius: 0.25rem; font-size: 0.75rem; display: flex; align-items: center; gap: 0.25rem; border: 1px solid rgba(255,255,255,0.1);">
+                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+                                                    <polyline points="13 2 13 9 20 9"></polyline>
+                                                </svg>
+                                                ${name.split('/').pop()}
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                `;
+                                
+                                // Extract the actual user query
+                                const queryMatch = displayContent.match(/User Query: ([\s\S]*)$/);
+                                const actualQuery = queryMatch ? queryMatch[1] : displayContent;
+                                
+                                displayContent = pillsHtml + actualQuery;
+                            }
+                        }
+                        
+                        messageDiv.innerHTML = displayContent;
                     }
                     
                     chatHistory.appendChild(messageDiv);
@@ -390,6 +566,10 @@ window.addEventListener('message', async (event) => {
                 // No-op here; modelsList will follow and refresh UI
                 break;
 
+            case 'workspaceFiles':
+                workspaceFiles = message.files || [];
+                break;
+
             case 'ollamaError':
                 vscode.postMessage({ command: 'showErrorMessage', text: message.error });
                 break;
@@ -430,3 +610,5 @@ document.getElementById('modelsModal').addEventListener('click', (e) => {
 
 // Fetch models initially to populate selector
 vscode.postMessage({ command: 'getModels' });
+// Fetch workspace files for @ mentions
+vscode.postMessage({ command: 'getWorkspaceFiles' });

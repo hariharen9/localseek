@@ -1,4 +1,7 @@
 import * as vscode from "vscode";
+import * as fs from "fs";
+import * as path from "path";
+import ignore from "ignore";
 import { Ollama } from "ollama";
 import { ChatHistoryManager, ChatMessage, ChatConversation } from "./chatHistory";
 import { KnowledgeBaseManager } from "./rag";
@@ -249,6 +252,29 @@ async function handleMessage(
           content: msg.content
         }));
 
+        // Handle attached files
+        if (message.attachedFiles && message.attachedFiles.length > 0) {
+          const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+          if (workspaceFolder) {
+            let attachedContent = "Here are the contents of the attached files for context:\n\n";
+            for (const file of message.attachedFiles) {
+              try {
+                const fileUri = vscode.Uri.joinPath(workspaceFolder.uri, file.path);
+                const content = await vscode.workspace.fs.readFile(fileUri);
+                attachedContent += `--- ${file.path} ---\n${content.toString()}\n\n`;
+              } catch (err) {
+                console.error(`Failed to read attached file: ${file.path}`, err);
+              }
+            }
+            
+            // Prepend the attached files content to the latest user message
+            const lastMsg = messagesToSend[messagesToSend.length - 1];
+            if (lastMsg && lastMsg.role === 'user') {
+              lastMsg.content = `${attachedContent}\nUser Query: ${lastMsg.content}`;
+            }
+          }
+        }
+
         // RAG enhancement: Search knowledge base and augment the latest user message
         if (message.useRAG && knowledgeBaseManager) {
           try {
@@ -449,6 +475,35 @@ async function handleMessage(
         vscode.window.showInformationMessage("Code inserted into editor");
       } catch (error) {
         vscode.window.showErrorMessage("Failed to insert code into editor");
+      }
+      break;
+
+    case "getWorkspaceFiles":
+      try {
+        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+        if (workspaceFolder) {
+          const files = await vscode.workspace.findFiles('**/*', '{**/node_modules/**,**/.git/**,**/dist/**,**/out/**,**/.next/**}');
+          let filePaths = files.map(f => vscode.workspace.asRelativePath(f, false));
+
+          // Try to apply .gitignore if it exists
+          try {
+            const gitignorePath = vscode.Uri.joinPath(workspaceFolder.uri, '.gitignore').fsPath;
+            if (fs.existsSync(gitignorePath)) {
+              const gitignoreContent = fs.readFileSync(gitignorePath, 'utf8');
+              const ig = ignore().add(gitignoreContent);
+              filePaths = ig.filter(filePaths);
+            }
+          } catch (err) {
+            console.warn("Failed to parse .gitignore", err);
+          }
+
+          webview.webview.postMessage({
+            command: 'workspaceFiles',
+            files: filePaths
+          });
+        }
+      } catch (error) {
+        console.error("Error fetching workspace files:", error);
       }
       break;
 

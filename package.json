@@ -141,6 +141,7 @@
     "typescript": "^5.7.2"
   },
   "dependencies": {
+    "ignore": "^7.0.5",
     "ollama": "^0.5.12"
   }
 }

@@ -582,3 +582,69 @@ footer a {
         gap: 0.75rem;
     }
 }
+
+.file-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 0;
+}
+.file-pills:not(:empty) {
+    margin-bottom: 0.5rem;
+}
+.file-pill {
+    background: var(--vscode-badge-background, rgba(99, 102, 241, 0.2));
+    color: var(--vscode-badge-foreground, white);
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    border: 1px solid var(--primary);
+}
+.file-pill-remove {
+    cursor: pointer;
+    opacity: 0.7;
+    display: flex;
+    align-items: center;
+}
+.file-pill-remove:hover {
+    opacity: 1;
+}
+.mention-dropdown {
+    position: absolute;
+    bottom: 100%;
+    left: 1.5rem;
+    margin-bottom: 0.5rem;
+    background: var(--vscode-dropdown-background, var(--surface));
+    border: 1px solid var(--vscode-dropdown-border, var(--border));
+    border-radius: 0.5rem;
+    max-height: 200px;
+    overflow-y: auto;
+    width: 300px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    z-index: 1000;
+    display: none;
+}
+.mention-dropdown.show {
+    display: block;
+}
+.mention-item {
+    padding: 0.5rem 1rem;
+    cursor: pointer;
+    font-size: 0.875rem;
+    color: var(--vscode-dropdown-foreground, white);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.mention-item:hover, .mention-item.selected {
+    background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.1));
+}
+.mention-item-path {
+    font-size: 0.7rem;
+    opacity: 0.6;
+    margin-left: auto;
+}
+

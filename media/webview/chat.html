@@ -66,14 +66,20 @@
         
         <div id="chatHistory"></div>
         
-        <div class="input-container">
-            <textarea id="userInput" placeholder="Ask me anything..." rows="1"></textarea>
-            <button class="send-btn" id="sendButton" onclick="sendMessage()">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="sendIcon">
-                    <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
-                </svg>
-                <span id="sendBtnText">Send</span>
-            </button>
+        <div class="input-container-wrapper" style="position: relative;">
+            <div id="mention-dropdown" class="mention-dropdown"></div>
+            <div class="input-container">
+                <div style="display: flex; flex-direction: column; flex: 1; min-width: 0;">
+                    <div id="file-pills" class="file-pills"></div>
+                    <textarea id="userInput" placeholder="Ask me anything... (Type @ to attach files)" rows="1"></textarea>
+                </div>
+                <button class="send-btn" id="sendButton" onclick="sendMessage()">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="sendIcon">
+                        <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+                    </svg>
+                    <span id="sendBtnText">Send</span>
+                </button>
+            </div>
         </div>
     </div>
 
