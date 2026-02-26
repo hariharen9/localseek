@@ -32,7 +32,7 @@
                 </select>
             </div>
             <div class="rag-toggle-container">
-                <label for="ragToggle" class="rag-label" title="Retrieval-Augmented Generation: When enabled, searches your indexed Knowledge Base and injects relevant code/docs into the AI's prompt as context before answering.">
+                <label for="ragToggle" class="rag-label" title="Retrieval-Augmented Generation (RAG):&#10;• When enabled, LocalSeek dynamically searches your indexed files based on your chat prompt.&#10;• It automatically extracts only the most relevant code snippets and documentation.&#10;• It seamlessly injects this context into the LLM prompt, forcing the AI to provide highly accurate, project-specific answers rather than generic guesses.&#10;• PREREQUISITE: You must set the absolute path to your Knowledge Base folder in VS Code Settings (localseek.rag.knowledgeBasePath).&#10;• SETUP: Open the Command Palette (Cmd/Ctrl+Shift+P) and run 'LocalSeek: Index Knowledge Base' whenever your files change.">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink: 0;">
                         <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
                     </svg>
@@ -44,17 +44,17 @@
                 </label>
             </div>
             <div class="chat-buttons">
-                <button class="btn btn-success" onclick="newChat()" title="New Chat">
+                <button class="btn btn-success" onclick="newChat()" title="Start a new chat conversation. Your current chat will be saved to history automatically.">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M12 5v14M5 12h14"/>
                     </svg>
                 </button>
-                <button class="btn btn-primary" onclick="showChatHistory()" title="Chat History">
+                <button class="btn btn-primary" onclick="showChatHistory()" title="View and resume previous chat conversations.">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M12 8v4l3 3M22 12c0 5.523-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2s10 4.477 10 10z"/>
                     </svg>
                 </button>
-                <button class="btn btn-primary" onclick="showModelManager()" title="Manage Models">
+                <button class="btn btn-primary" onclick="showModelManager()" title="Manage your local Ollama models. Download new models or delete unused ones to free up space.">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M3 7l9-5 9 5-9 5-9-5z"/>
                         <path d="M3 17l9 5 9-5"/>
