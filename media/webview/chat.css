@@ -7,7 +7,8 @@
 }
 
 body {
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-family: var(--vscode-font-family), 'Inter', system-ui, -apple-system, sans-serif;
+    font-size: var(--vscode-font-size);
     margin: 0;
     padding: 2rem;
     background: 
@@ -15,7 +16,7 @@ body {
         radial-gradient(circle at 0% 100%, rgba(16, 185, 129, 0.1) 0%, transparent 60%),
         #0f172a;
     height: 100vh;
-    color: rgba(255, 255, 255, 0.9);
+    color: var(--vscode-foreground, rgba(255, 255, 255, 0.9));
     display: flex;
     justify-content: center;
     align-items: center;
@@ -82,12 +83,12 @@ body {
 }
 
 #modelSelector {
-    font-family: "Inter", "Arial", sans-serif;
+    font-family: inherit;
     padding: 0.5rem 1rem;
-    background: var(--surface);
-    border: 1px solid var(--primary);
+    background: var(--vscode-dropdown-background, var(--surface));
+    border: 1px solid var(--vscode-dropdown-border, var(--primary));
     border-radius: 0.5rem;
-    color: white;
+    color: var(--vscode-dropdown-foreground, white);
     font-size: 0.875rem;
     appearance: none;
     background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white'%3e%3cpath d='M7 10l5 5 5-5z'/%3e%3c/svg%3e");
@@ -177,10 +178,10 @@ body {
     flex: 1;
     min-width: 0;
     padding: 0.875rem 1.25rem;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid var(--border);
+    background: var(--vscode-input-background, rgba(255, 255, 255, 0.05));
+    border: 1px solid var(--vscode-input-border, var(--border));
     border-radius: 0.75rem;
-    color: white;
+    color: var(--vscode-input-foreground, white);
     font-size: 0.9375rem;
     transition: all 0.2s ease;
     resize: none;
@@ -191,8 +192,8 @@ body {
 
 #userInput:focus {
     outline: none;
-    border-color: var(--primary);
-    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+    border-color: var(--vscode-focusBorder, var(--primary));
+    box-shadow: 0 0 0 1px var(--vscode-focusBorder, rgba(99, 102, 241, 0.2));
 }
 
 .send-btn {
@@ -480,17 +481,24 @@ pre code {
 
 /* Scrollbar styling */
 ::-webkit-scrollbar {
-    width: 8px;
+    width: 10px;
 }
 
 ::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 4px;
+    background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.2);
+    background: var(--vscode-scrollbarSlider-background, rgba(255, 255, 255, 0.2));
     border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--vscode-scrollbarSlider-hoverBackground, rgba(255, 255, 255, 0.3));
+}
+
+::-webkit-scrollbar-thumb:active {
+    background: var(--vscode-scrollbarSlider-activeBackground, rgba(255, 255, 255, 0.4));
 }
 
 @keyframes messageEnter {
