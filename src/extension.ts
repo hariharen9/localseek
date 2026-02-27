@@ -15,7 +15,7 @@ export function activate(context: vscode.ExtensionContext) {
   });
 
   const chatHistoryManager = new ChatHistoryManager(context);
-  const knowledgeBaseManager = new KnowledgeBaseManager(context);
+  const knowledgeBaseManager = new KnowledgeBaseManager(context, ollama);
 
   let currentPanel: vscode.WebviewPanel | undefined;
   let sidebarWebviewView: vscode.WebviewView | undefined;
@@ -278,44 +278,33 @@ async function handleMessage(
         // RAG enhancement: Search knowledge base and augment the latest user message
         if (message.useRAG && knowledgeBaseManager) {
           try {
-            // Check if knowledge base path is configured
-            const config = vscode.workspace.getConfiguration("localseek");
-            const knowledgeBasePath = config.get("rag.knowledgeBasePath") as string;
-            
-            if (!knowledgeBasePath || knowledgeBasePath.trim() === "") {
+            const isIndexed = await knowledgeBaseManager.isKnowledgeBaseIndexed();
+            if (!isIndexed) {
               webview.webview.postMessage({
                 command: 'showWarningMessage',
-                text: 'Knowledge base path not configured. Please set "Knowledge Base Path" in settings to use RAG.'
+                text: 'Knowledge base not indexed. Please run "LocalSeek: Index Knowledge Base" command first.'
               });
             } else {
-              const isIndexed = await knowledgeBaseManager.isKnowledgeBaseIndexed();
-              if (!isIndexed) {
+              const searchResults = await knowledgeBaseManager.search(message.text);
+              if (searchResults && searchResults.length > 0) {
+                // Create an augmented version of the user's message with context
+                const context = searchResults.map(result => 
+                  `**Source: ${result.metadata.source}**\n${result.content}`
+                ).join('\n\n---\n\n');
+                
+                const augmentedContent = `Context from knowledge base:\n\n${context}\n\n---\n\nUser Query: ${message.text}`;
+                
+                // Replace the last message (user's query) with the augmented version
+                messagesToSend[messagesToSend.length - 1] = {
+                  role: "user",
+                  content: augmentedContent
+                };
+                
+                // Optionally show a subtle indicator that RAG was used
                 webview.webview.postMessage({
-                  command: 'showWarningMessage',
-                  text: 'Knowledge base not indexed. Please run "LocalSeek: Index Knowledge Base" command first.'
+                  command: "showInformationMessage",
+                  text: `Enhanced with context from knowledge base.`
                 });
-              } else {
-                const searchResults = await knowledgeBaseManager.search(message.text);
-                if (searchResults && searchResults.length > 0) {
-                  // Create an augmented version of the user's message with context
-                  const context = searchResults.map(result => 
-                    `**Source: ${result.metadata.source}**\n${result.content}`
-                  ).join('\n\n---\n\n');
-                  
-                  const augmentedContent = `Context from knowledge base:\n\n${context}\n\n---\n\nUser Query: ${message.text}`;
-                  
-                  // Replace the last message (user's query) with the augmented version
-                  messagesToSend[messagesToSend.length - 1] = {
-                    role: "user",
-                    content: augmentedContent
-                  };
-                  
-                  // Optionally show a subtle indicator that RAG was used
-                  webview.webview.postMessage({
-                    command: "showInformationMessage",
-                    text: `Enhanced with context from knowledge base.`
-                  });
-                }
               }
             }
           } catch (error) {
