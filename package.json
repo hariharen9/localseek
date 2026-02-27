@@ -2,7 +2,7 @@
   "name": "localseek",
   "displayName": "LocalSeek",
   "description": "Chat with your LLMs completely locally",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "publisher": "Hariharen",
   "private": false,
   "license": "MIT",
