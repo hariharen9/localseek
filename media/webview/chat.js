@@ -583,6 +583,8 @@ document.getElementById('modelsModal').addEventListener('click', (e) => {
 vscode.postMessage({ command: 'getModels' });
 // Fetch workspace files for @ mentions
 vscode.postMessage({ command: 'getWorkspaceFiles' });
+// Signal that the webview is ready
+vscode.postMessage({ command: 'webviewReady' });
 
 function processCodeBlocks(element) {
     element.querySelectorAll("pre code").forEach(codeBlock => {

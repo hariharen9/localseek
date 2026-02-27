@@ -140,11 +140,22 @@ async function setupWebview(
 
   panel.webview.html = getWebviewContent(models, context, panel.webview);
   
-  // Start with a new conversation
-  let currentConversationId = chatHistoryManager.startNewConversation();
-  let conversationHistory: ChatMessage[] = [];
+  let currentId = chatHistoryManager.getCurrentConversationId();
+  if (!currentId || chatHistoryManager.getConversationHistory(currentId).length === 0) {
+    currentId = chatHistoryManager.startNewConversation();
+  }
+  let currentConversationId: string = currentId;
+  let conversationHistory: ChatMessage[] = [...chatHistoryManager.getConversationHistory(currentConversationId)];
 
   panel.webview.onDidReceiveMessage(async (message) => {
+    if (message.command === "webviewReady") {
+      if (conversationHistory.length > 0) {
+        panel.webview.postMessage({
+          command: "loadConversationMessages",
+          messages: conversationHistory
+        });
+      }
+    }
     await handleMessage(message, panel, conversationHistory, ollama, chatHistoryManager, currentConversationId, (newId) => {
       currentConversationId = newId;
     }, knowledgeBaseManager);
@@ -184,11 +195,22 @@ class ChatWebviewViewProvider implements vscode.WebviewViewProvider {
         webviewView.webview.html = getWebviewContent([], this.context, webviewView.webview);
       });
 
-    // Start with a new conversation
-    let currentConversationId = this.chatHistoryManager.startNewConversation();
-    let conversationHistory: ChatMessage[] = [];
+    let currentId = this.chatHistoryManager.getCurrentConversationId();
+    if (!currentId || this.chatHistoryManager.getConversationHistory(currentId).length === 0) {
+      currentId = this.chatHistoryManager.startNewConversation();
+    }
+    let currentConversationId: string = currentId;
+    let conversationHistory: ChatMessage[] = [...this.chatHistoryManager.getConversationHistory(currentConversationId)];
 
-      webviewView.webview.onDidReceiveMessage(async (message) => {
+    webviewView.webview.onDidReceiveMessage(async (message) => {
+      if (message.command === "webviewReady") {
+        if (conversationHistory.length > 0) {
+          webviewView.webview.postMessage({
+            command: "loadConversationMessages",
+            messages: conversationHistory
+          });
+        }
+      }
       await handleMessage(message, webviewView, conversationHistory, this.ollama, this.chatHistoryManager, currentConversationId, (newId) => {
         currentConversationId = newId;
       }, this.knowledgeBaseManager);

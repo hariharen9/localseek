@@ -127,6 +127,12 @@ export class ChatHistoryManager {
   }
 
   public getCurrentConversationId(): string | undefined {
+    if (!this.currentConversationId) {
+      const allConvs = this.getAllConversations();
+      if (allConvs.length > 0) {
+        this.currentConversationId = allConvs[0].id;
+      }
+    }
     return this.currentConversationId;
   }
 
