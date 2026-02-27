@@ -1,7 +1,7 @@
 {
   "name": "localseek",
   "displayName": "LocalSeek",
-  "description": "Chat with your LLMs completely locally",
+  "description": "100% Local, Privacy-First AI Chat for VS Code. Chat with your codebase using true Vector RAG and local LLMs via Ollama, wrapped in a visually stunning UI.",
   "version": "1.1.0",
   "publisher": "Hariharen",
   "private": false,
@@ -14,9 +14,11 @@
     "vscode": "^1.96.0"
   },
   "categories": [
-    "Other",
     "Machine Learning",
-    "Education"
+    "Education",
+    "Snippets",
+    "Formatters",
+    "Programming Languages"
   ],
   "keywords": [
     "ai",
@@ -24,7 +26,12 @@
     "llm",
     "ollama",
     "local",
-    "deepseek"
+    "deepseek",
+    "rag",
+    "privacy",
+    "offline",
+    "copilot",
+    "llama"
   ],
   "icon": "media/LOCALSEEK-logo.png",
   "galleryBanner": {

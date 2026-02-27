@@ -3,7 +3,10 @@ name: Release and Publish
 on:
   push:
     tags:
-      - '*' # Triggers on any tag pushed
+      - 'v*' # Triggers on semantic versioning tags like v1.0.0, v1.1.0, etc.
+
+permissions:
+  contents: write # Required to create a GitHub Release
 
 jobs:
   build-release-publish:
