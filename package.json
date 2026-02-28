@@ -2,7 +2,7 @@
   "name": "localseek",
   "displayName": "LocalSeek",
   "description": "100% Local, Privacy-First AI Chat for VS Code. Chat with your codebase using true Vector RAG and local LLMs via Ollama, wrapped in a visually stunning UI.",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "publisher": "Hariharen",
   "private": false,
   "license": "MIT",
