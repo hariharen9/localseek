@@ -17,6 +17,67 @@ export function activate(context: vscode.ExtensionContext) {
   const chatHistoryManager = new ChatHistoryManager(context);
   const knowledgeBaseManager = new KnowledgeBaseManager(context, ollama);
 
+  // Track pending apply operations so "Accept" knows what to write
+  let pendingApply: {
+    originalUri: vscode.Uri;
+    tempFileUri: vscode.Uri;
+  } | undefined;
+
+  function setPendingApply(pending: typeof pendingApply) {
+    pendingApply = pending;
+    vscode.commands.executeCommand('setContext', 'localseek.diffViewActive', !!pending);
+  }
+
+  // Accept command – reads the (possibly user-edited) temp file and writes to the original
+  context.subscriptions.push(
+    vscode.commands.registerCommand("localseek.acceptApply", async () => {
+      if (!pendingApply) {
+        vscode.window.showWarningMessage("No pending code apply to accept.");
+        return;
+      }
+
+      const { originalUri, tempFileUri } = pendingApply;
+
+      try {
+        // Read the temp file (user may have edited it in the diff view)
+        const proposedDoc = await vscode.workspace.openTextDocument(tempFileUri);
+        const finalContent = proposedDoc.getText();
+
+        // Close the diff tab without triggering a save prompt
+        await vscode.commands.executeCommand("workbench.action.revertAndCloseActiveEditor");
+
+        // Write to the original file
+        const edit = new vscode.WorkspaceEdit();
+        const originalDoc = await vscode.workspace.openTextDocument(originalUri);
+        const fullRange = new vscode.Range(
+          originalDoc.positionAt(0),
+          originalDoc.positionAt(originalDoc.getText().length)
+        );
+        edit.replace(originalUri, fullRange, finalContent);
+        await vscode.workspace.applyEdit(edit);
+
+        // Clean up temp file
+        try { await vscode.workspace.fs.delete(tempFileUri); } catch {}
+        setPendingApply(undefined);
+
+        vscode.window.showInformationMessage("Changes applied successfully.");
+      } catch (error) {
+        vscode.window.showErrorMessage("Failed to apply changes.");
+      }
+    })
+  );
+
+  // Discard command – closes the diff without applying
+  context.subscriptions.push(
+    vscode.commands.registerCommand("localseek.discardApply", async () => {
+      if (pendingApply) {
+        try { await vscode.workspace.fs.delete(pendingApply.tempFileUri); } catch {}
+        setPendingApply(undefined);
+      }
+      await vscode.commands.executeCommand("workbench.action.revertAndCloseActiveEditor");
+    })
+  );
+
   let currentPanel: vscode.WebviewPanel | undefined;
   let sidebarWebviewView: vscode.WebviewView | undefined;
 
@@ -28,7 +89,7 @@ export function activate(context: vscode.ExtensionContext) {
       }
 
       currentPanel = createWebviewPanel(context);
-      setupWebview(currentPanel, context, ollama, chatHistoryManager, knowledgeBaseManager, () => {
+      setupWebview(currentPanel, context, ollama, chatHistoryManager, knowledgeBaseManager, setPendingApply, () => {
         currentPanel = undefined;
       });
     })
@@ -87,7 +148,7 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
-  const chatWebviewProvider = new ChatWebviewViewProvider(context, ollama, chatHistoryManager, knowledgeBaseManager, (view) => {
+  const chatWebviewProvider = new ChatWebviewViewProvider(context, ollama, chatHistoryManager, knowledgeBaseManager, setPendingApply, (view) => {
     sidebarWebviewView = view;
   });
   context.subscriptions.push(
@@ -126,6 +187,7 @@ async function setupWebview(
   ollama: Ollama,
   chatHistoryManager: ChatHistoryManager,
   knowledgeBaseManager: KnowledgeBaseManager,
+  setPendingApply: (pending: { originalUri: vscode.Uri; tempFileUri: vscode.Uri } | undefined) => void,
   onDispose: () => void
 ) {
   let models: string[] = [];
@@ -158,7 +220,7 @@ async function setupWebview(
     }
     await handleMessage(message, panel, conversationHistory, ollama, chatHistoryManager, currentConversationId, (newId) => {
       currentConversationId = newId;
-    }, knowledgeBaseManager);
+    }, knowledgeBaseManager, context, setPendingApply);
   });
 
   panel.onDidDispose(() => {
@@ -172,6 +234,7 @@ class ChatWebviewViewProvider implements vscode.WebviewViewProvider {
     private readonly ollama: Ollama,
     private readonly chatHistoryManager: ChatHistoryManager,
     private readonly knowledgeBaseManager: KnowledgeBaseManager,
+    private readonly setPendingApply: (pending: { originalUri: vscode.Uri; tempFileUri: vscode.Uri } | undefined) => void,
     private readonly onViewReady: (view: vscode.WebviewView) => void
   ) {}
 
@@ -213,7 +276,7 @@ class ChatWebviewViewProvider implements vscode.WebviewViewProvider {
       }
       await handleMessage(message, webviewView, conversationHistory, this.ollama, this.chatHistoryManager, currentConversationId, (newId) => {
         currentConversationId = newId;
-      }, this.knowledgeBaseManager);
+      }, this.knowledgeBaseManager, this.context, this.setPendingApply);
     });
   }
 }
@@ -240,7 +303,9 @@ async function handleMessage(
   chatHistoryManager: ChatHistoryManager,
   currentConversationId: string,
   setConversationId: (id: string) => void,
-  knowledgeBaseManager?: KnowledgeBaseManager
+  knowledgeBaseManager?: KnowledgeBaseManager,
+  extensionContext?: vscode.ExtensionContext,
+  setPendingApply?: (pending: { originalUri: vscode.Uri; tempFileUri: vscode.Uri } | undefined) => void
 ) {
   switch (message.command) {
     case "showInformationMessage":
@@ -456,41 +521,72 @@ async function handleMessage(
       });
       break;
 
-    case "insertCodeToEditor":
+    case "applyCodeToEditor":
       try {
         const editor = vscode.window.activeTextEditor;
         if (!editor) {
-          vscode.window.showWarningMessage("No active editor found");
+          vscode.window.showWarningMessage(
+            "No active editor found. Open a file first to apply code."
+          );
           return;
         }
 
-        const selection = editor.selection;
-        const codeToInsert = message.code;
-        
-        await editor.edit(editBuilder => {
-          if (selection.isEmpty) {
-            // Insert at cursor position
-            editBuilder.insert(selection.active, codeToInsert);
-          } else {
-            // Replace selected text
-            editBuilder.replace(selection, codeToInsert);
-          }
-        });
+        if (!extensionContext || !setPendingApply) {
+          vscode.window.showWarningMessage("Apply feature is not available.");
+          return;
+        }
 
-        // Position cursor at the end of inserted text
-        const insertedLines = codeToInsert.split('\n');
-        const newLine = selection.active.line + insertedLines.length - 1;
-        const newCharacter = insertedLines.length > 1 
-          ? insertedLines[insertedLines.length - 1].length
-          : selection.active.character + codeToInsert.length;
-        
-        const newPosition = new vscode.Position(newLine, newCharacter);
-        editor.selection = new vscode.Selection(newPosition, newPosition);
-        editor.revealRange(new vscode.Range(newPosition, newPosition));
-        
-        vscode.window.showInformationMessage("Code inserted into editor");
+        const originalUri = editor.document.uri;
+        const originalContent = editor.document.getText();
+        const selection = editor.selection;
+        const codeToApply = message.code;
+
+        // Build the proposed content: insert at cursor or replace selection
+        let proposedContent: string;
+        if (selection.isEmpty) {
+          const offset = editor.document.offsetAt(selection.active);
+          proposedContent =
+            originalContent.substring(0, offset) +
+            codeToApply +
+            originalContent.substring(offset);
+        } else {
+          const startOffset = editor.document.offsetAt(selection.start);
+          const endOffset = editor.document.offsetAt(selection.end);
+          proposedContent =
+            originalContent.substring(0, startOffset) +
+            codeToApply +
+            originalContent.substring(endOffset);
+        }
+
+        // Write proposed content to a temp file in extension storage (editable!)
+        const timestamp = Date.now();
+        const fileName = path.basename(editor.document.fileName);
+        const ext = path.extname(fileName);
+        const baseName = path.basename(fileName, ext);
+        const tempFileName = `${baseName}.localseek-proposed-${timestamp}${ext}`;
+
+        // Ensure storage directory exists
+        try {
+          await vscode.workspace.fs.stat(extensionContext.globalStorageUri);
+        } catch {
+          await vscode.workspace.fs.createDirectory(extensionContext.globalStorageUri);
+        }
+
+        const tempFileUri = vscode.Uri.joinPath(extensionContext.globalStorageUri, tempFileName);
+        await vscode.workspace.fs.writeFile(tempFileUri, Buffer.from(proposedContent));
+
+        // Store pending apply for the accept/discard commands
+        setPendingApply({ originalUri, tempFileUri });
+
+        // Open the diff view — Accept/Discard buttons appear in the editor title bar
+        await vscode.commands.executeCommand(
+          "vscode.diff",
+          originalUri,
+          tempFileUri,
+          `${fileName}: Review LocalSeek's Proposed Changes`
+        );
       } catch (error) {
-        vscode.window.showErrorMessage("Failed to insert code into editor");
+        vscode.window.showErrorMessage("Failed to open diff view for code.");
       }
       break;
 

@@ -560,9 +560,9 @@ function copyCodeToClipboard(code) {
     });
 }
 
-function insertCodeToEditor(code) {
+function applyCodeToEditor(code) {
     vscode.postMessage({
-        command: 'insertCodeToEditor',
+        command: 'applyCodeToEditor',
         code: code
     });
 }
@@ -611,8 +611,8 @@ function processCodeBlocks(element) {
         
         const insertButton = document.createElement("button");
         insertButton.className = "code-action-btn";
-        insertButton.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg> Insert`;
-        insertButton.onclick = () => insertCodeToEditor(codeBlock.textContent);
+        insertButton.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg> Apply`;
+        insertButton.onclick = () => applyCodeToEditor(codeBlock.textContent);
         
         const copyButton = document.createElement("button");
         copyButton.className = "code-action-btn";

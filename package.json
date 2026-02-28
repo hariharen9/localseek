@@ -60,6 +60,18 @@
         "command": "localseek.indexKnowledgeBase",
         "title": "Index Knowledge Base for RAG",
         "category": "LocalSeek"
+      },
+      {
+        "command": "localseek.acceptApply",
+        "title": "Accept AI Changes",
+        "category": "LocalSeek",
+        "icon": "$(check)"
+      },
+      {
+        "command": "localseek.discardApply",
+        "title": "Discard AI Changes",
+        "category": "LocalSeek",
+        "icon": "$(close)"
       }
     ],
     "viewsContainers": {
@@ -121,6 +133,18 @@
           "command": "localseek.sendSelectedCode",
           "when": "editorHasSelection",
           "group": "localseek@1"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "localseek.acceptApply",
+          "when": "localseek.diffViewActive",
+          "group": "navigation@1"
+        },
+        {
+          "command": "localseek.discardApply",
+          "when": "localseek.diffViewActive",
+          "group": "navigation@2"
         }
       ]
     }
